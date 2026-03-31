@@ -14,8 +14,9 @@ enum WashiScanProcessor {
     ///   - contrast: Amplifies the extracted structure. Higher = more visible
     ///     fiber detail. Range: 1.0 (subtle) to 4.0 (dramatic).
     ///
-    /// - Returns: A grayscale CGImage where 0.5 = neutral, >0.5 = fiber-dense,
-    ///   <0.5 = translucent gap.
+    /// - Returns: An RGBA CGImage where R = density (0.5 = neutral, >0.5 =
+    ///   fiber-dense, <0.5 = translucent gap), G = fiber orientation ([0..1]
+    ///   mapping to [0..π] radians), B = 0, A = 255.
     nonisolated static func extractStructure(
         from image: CGImage,
         blurRadius: Float = 50.0,
@@ -48,7 +49,8 @@ enum WashiScanProcessor {
             structure[i] = min(max(diffs[i] * scale + 0.5, 0.0), 1.0)
         }
 
-        return bufferToCGImage(structure, width: width, height: height)
+        let orientation = extractOrientation(from: structure, width: width, height: height)
+        return bufferToRGBAImage(densityBuffer: structure, orientationBuffer: orientation, width: width, height: height)
     }
 
     // MARK: - Helpers
@@ -158,21 +160,88 @@ enum WashiScanProcessor {
         return output
     }
 
-    nonisolated private static func bufferToCGImage(
-        _ buffer: [Float],
+    /// Extract dominant fiber orientation from a density buffer using
+    /// the structure tensor (sum of outer products of image gradients
+    /// in a local window).
+    ///
+    /// Returns an orientation buffer where each value is in [0..1],
+    /// mapping to fiber angle [0..π]. 0.0 = horizontal, 0.5 = vertical.
+    nonisolated private static func extractOrientation(
+        from densityBuffer: [Float],
+        width: Int,
+        height: Int,
+        windowRadius: Int = 4
+    ) -> [Float] {
+        let count = width * height
+        var orientation = [Float](repeating: 0.5, count: count)
+
+        for y in 1..<(height - 1) {
+            for x in 1..<(width - 1) {
+                var Jxx: Float = 0, Jxy: Float = 0, Jyy: Float = 0
+
+                let r = windowRadius
+                let yMin = max(1, y - r)
+                let yMax = min(height - 2, y + r)
+                let xMin = max(1, x - r)
+                let xMax = min(width - 2, x + r)
+
+                for wy in yMin...yMax {
+                    for wx in xMin...xMax {
+                        let idx = wy * width + wx
+                        let ix = densityBuffer[idx + 1] - densityBuffer[idx - 1]
+                        let iy = densityBuffer[idx + width] - densityBuffer[idx - width]
+
+                        Jxx += ix * ix
+                        Jxy += ix * iy
+                        Jyy += iy * iy
+                    }
+                }
+
+                let gradAngle = 0.5 * atan2(2.0 * Jxy, Jxx - Jyy)
+                let fiberAngle = gradAngle + .pi / 2.0
+
+                var normalized = fiberAngle
+                if normalized < 0 { normalized += .pi }
+                if normalized >= .pi { normalized -= .pi }
+
+                orientation[y * width + x] = normalized / .pi
+            }
+        }
+
+        return orientation
+    }
+
+    /// Convert density + orientation buffers to an RGBA CGImage.
+    /// R = density, G = orientation, B = 0, A = 255.
+    /// Matches the format produced by FiberSimulator.
+    nonisolated private static func bufferToRGBAImage(
+        densityBuffer: [Float],
+        orientationBuffer: [Float],
         width: Int,
         height: Int
     ) -> CGImage {
-        let pixels = Data(buffer.map { UInt8(min(max($0 * 255.0, 0.0), 255.0)) })
-        let provider = CGDataProvider(data: pixels as CFData)!
+        let count = width * height
+        var pixels = [UInt8](repeating: 0, count: count * 4)
+
+        for i in 0..<count {
+            pixels[i * 4 + 0] = UInt8(min(max(densityBuffer[i] * 255.0, 0), 255))
+            pixels[i * 4 + 1] = UInt8(min(max(orientationBuffer[i] * 255.0, 0), 255))
+            pixels[i * 4 + 2] = 0
+            pixels[i * 4 + 3] = 255
+        }
+
+        let data = Data(pixels)
+        let provider = CGDataProvider(data: data as CFData)!
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+
         return CGImage(
             width: width,
             height: height,
             bitsPerComponent: 8,
-            bitsPerPixel: 8,
-            bytesPerRow: width,
-            space: CGColorSpaceCreateDeviceGray(),
-            bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue),
+            bitsPerPixel: 32,
+            bytesPerRow: width * 4,
+            space: colorSpace,
+            bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipLast.rawValue),
             provider: provider,
             decode: nil,
             shouldInterpolate: true,
