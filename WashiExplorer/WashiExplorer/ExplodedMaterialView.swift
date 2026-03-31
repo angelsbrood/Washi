@@ -308,6 +308,7 @@ struct ExplodedMaterialView: View {
                             withAnimation(.spring(duration: 0.4, bounce: 0.15)) {
                                 zoom = multiZoomMax
                                 focusAmount = 0
+                                showLabels = true
                             }
                         } else {
                             // Snap back to single-card zoom
@@ -363,6 +364,7 @@ struct ExplodedMaterialView: View {
                 Image(decorative: img, scale: 1.0)
                     .resizable()
                     .interpolation(.high)
+                    .colorEffect(ShaderLibrary.default.amberDensity())
             } else {
                 Color.clear
             }

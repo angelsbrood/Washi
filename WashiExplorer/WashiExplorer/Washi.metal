@@ -635,6 +635,36 @@ float sparseProminentFiber(
 }
 
 // ============================================================
+// Debug visualization: amber density ramp
+//
+// Maps the R channel (fiber density 0..1) through a warm amber
+// color ramp. Five sRGB stops along a ~30°–40° hue arc:
+//   0.00  dark roasted umber    0.25  warm copper
+//   0.50  rich amber            0.75  golden cream
+//   1.00  pale parchment
+// ============================================================
+
+[[ stitchable ]] half4 amberDensity(
+    float2 position,
+    half4 color
+) {
+    half d = half(saturate(float(color.r)));
+
+    half3 c0 = half3(0.11h, 0.07h, 0.035h);   // substrate
+    half3 c1 = half3(0.63h, 0.40h, 0.23h);     // copper
+    half3 c2 = half3(0.78h, 0.58h, 0.29h);     // amber
+    half3 c3 = half3(0.94h, 0.85h, 0.66h);     // golden
+    half3 c4 = half3(0.98h, 0.94h, 0.86h);     // parchment
+
+    half3 rgb = mix(c0, c1, saturate(d * 4.0h));
+    rgb = mix(rgb, c2, saturate((d - 0.25h) * 4.0h));
+    rgb = mix(rgb, c3, saturate((d - 0.5h) * 4.0h));
+    rgb = mix(rgb, c4, saturate((d - 0.75h) * 4.0h));
+
+    return half4(rgb, 1.0h);
+}
+
+// ============================================================
 // Tier 3: Simulated Fiber Deposition
 //
 // The density map is precomputed on CPU (FiberSimulator) and

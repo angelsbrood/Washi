@@ -567,6 +567,7 @@ struct ContentView: View {
                 }
             }
             .clipShape(RoundedRectangle(cornerRadius: 12))
+            .onTapGesture { triggerScanPicker() }
             .contextMenu {
                 Button {
                     triggerScanPicker()
@@ -683,6 +684,7 @@ struct ContentView: View {
             Image(decorative: cgImage, scale: 1.0)
                 .resizable()
                 .interpolation(.high)
+                .colorEffect(ShaderLibrary.default.amberDensity())
                 .clipShape(RoundedRectangle(cornerRadius: 12))
                 .overlay { generatingOverlay }
         } else if let cgImage = image {
@@ -734,6 +736,7 @@ struct ContentView: View {
                 Image(decorative: cgImage, scale: 1.0)
                     .resizable()
                     .interpolation(.high)
+                    .colorEffect(ShaderLibrary.default.amberDensity())
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                     .overlay { scanProcessingOverlay }
             } else if let cgImage = scanDensityImage {
