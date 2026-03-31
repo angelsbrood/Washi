@@ -219,6 +219,8 @@ struct ContentView: View {
     @State private var scanContrast: Float = 2.0
     @State private var isScanProcessing = false
     @State private var scanLoadGeneration: Int = 0
+    @State private var pendingScanImage: CGImage?
+    @State private var showingScanCrop = false
 
     private let seed: Float = 42.0
     private let motionManager = WashiMotionManager.shared
@@ -229,6 +231,7 @@ struct ContentView: View {
 
     // 3D exploded view
     @State private var expandedCard: (tier: WashiTier, weight: ExplorerWeight)?
+    @State private var expandedGeneration = 0
     @Namespace private var cardTransition
 
     // MARK: Density generation trigger
@@ -285,8 +288,8 @@ struct ContentView: View {
             kumoScale: clamp01(kumoScale + weight.kumoScaleOffset),
             surface: clamp01(surface * weight.surfaceRatio),
             warmth: warmth,
-            creamTintOpacity: previewScheme == .light
-                ? Double(creamOpacity) * weight.creamRatio : 0,
+            creamTintOpacity: Double(creamOpacity) * weight.creamRatio
+                * (previewScheme == .dark ? 0.5 : 1.0),
             systemMaterial: weight.systemMaterial
         )
     }
@@ -461,6 +464,14 @@ struct ContentView: View {
             Task { await loadImageFromPickerItem(newItem, target: .background) }
         }
         #endif
+        .sheet(isPresented: $showingScanCrop) {
+            if let image = pendingScanImage {
+                ScanCropView(image: image) { cropped in
+                    scanSourceImage = cropped
+                    scanLoadGeneration += 1
+                }
+            }
+        }
         // Scan processing
         .task(id: scanProcessingParams) {
             guard let params = scanProcessingParams, let sourceImage = scanSourceImage else { return }
@@ -503,7 +514,7 @@ struct ContentView: View {
 
             if let expanded = expandedCard {
                 explodedOverlay(tier: expanded.tier, weight: expanded.weight)
-                    .id("\(expanded.tier.rawValue)-\(expanded.weight.rawValue)")
+                    .id(expandedGeneration)
             }
         }
         .onAppear { motionManager.start() }
@@ -641,6 +652,7 @@ struct ContentView: View {
         }
         .matchedGeometryEffect(id: "\(tier.rawValue)-\(weight.rawValue)", in: cardTransition)
         .onTapGesture {
+            expandedGeneration += 1
             withAnimation(.spring(duration: 0.5, bounce: 0.12)) {
                 expandedCard = (tier: tier, weight: weight)
             }
@@ -750,6 +762,7 @@ struct ContentView: View {
                 Image(decorative: cgImage, scale: 1.0)
                     .resizable()
                     .interpolation(.high)
+                    .aspectRatio(contentMode: .fill)
                     .colorEffect(ShaderLibrary.default.amberDensity())
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                     .overlay { scanProcessingOverlay }
@@ -765,6 +778,7 @@ struct ContentView: View {
                         Image(decorative: cgImage, scale: 1.0)
                             .resizable()
                             .interpolation(.high)
+                            .aspectRatio(contentMode: .fill)
                             .colorEffect(Shader(
                                 function: ShaderLibrary.default.washiSimulated,
                                 arguments: args
@@ -1305,8 +1319,8 @@ struct ContentView: View {
 
         switch target {
         case .scan:
-            scanSourceImage = cgImage
-            scanLoadGeneration += 1
+            pendingScanImage = cgImage
+            showingScanCrop = true
         case .background:
             backgroundImage = cgImage
         }
@@ -1316,8 +1330,8 @@ struct ContentView: View {
     #if os(macOS)
     private func loadScanFromURL(_ url: URL) {
         guard let decoded = loadImageFromURL(url) else { return }
-        scanSourceImage = decoded
-        scanLoadGeneration += 1
+        pendingScanImage = decoded
+        showingScanCrop = true
     }
 
     private func loadBackgroundFromURL(_ url: URL) {

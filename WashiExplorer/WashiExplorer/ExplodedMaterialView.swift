@@ -99,6 +99,55 @@ struct ExplodedMaterialView: View {
         baseOrbitY + Double(clampedDragWidth / 200.0) * 15.0
     }
 
+    // MARK: - Orbit Fiber Response
+
+    /// Tilt magnitude from orbit deviation — how far the viewing angle
+    /// has shifted from the default isometric position.
+    private var orbitTiltIntensity: Float {
+        let devX = Float(orbitX - baseOrbitX)
+        let devY = Float(orbitY - baseOrbitY)
+        let magnitude = sqrt(devX * devX + devY * devY)
+        let maxDev: Float = 15.0
+        return min(magnitude / maxDev, 1.0)
+    }
+
+    /// Tilt direction from orbit deviation.
+    private var orbitTiltAngle: Float {
+        let devX = Float(orbitX - baseOrbitX)
+        let devY = Float(orbitY - baseOrbitY)
+        var angle = atan2(devX, devY)
+        if angle < 0 { angle += 2.0 * .pi }
+        return angle
+    }
+
+    /// Combined tilt magnitude: vector sum of gyro + orbit contributions.
+    private var combinedTiltIntensity: Float {
+        let gyroX = motionManager.tiltIntensity * cos(motionManager.tiltAngle)
+        let gyroY = motionManager.tiltIntensity * sin(motionManager.tiltAngle)
+
+        let oX = orbitTiltIntensity * cos(orbitTiltAngle)
+        let oY = orbitTiltIntensity * sin(orbitTiltAngle)
+
+        let cx = gyroX + oX
+        let cy = gyroY + oY
+        return min(sqrt(cx * cx + cy * cy), 1.0)
+    }
+
+    /// Combined tilt direction: direction of the gyro + orbit vector sum.
+    private var combinedTiltAngle: Float {
+        let gyroX = motionManager.tiltIntensity * cos(motionManager.tiltAngle)
+        let gyroY = motionManager.tiltIntensity * sin(motionManager.tiltAngle)
+
+        let oX = orbitTiltIntensity * cos(orbitTiltAngle)
+        let oY = orbitTiltIntensity * sin(orbitTiltAngle)
+
+        let cx = gyroX + oX
+        let cy = gyroY + oY
+        var angle = atan2(cy, cx)
+        if angle < 0 { angle += 2.0 * .pi }
+        return angle
+    }
+
     /// 0 = normal exploded view, 1 = focused on Result card
     /// Driven by focusAmount (animated state), not zoom level
     private var focusProgress: Double { focusAmount }
@@ -189,12 +238,12 @@ struct ExplodedMaterialView: View {
                     .rotation3DEffect(
                         .degrees(rotX),
                         axis: (x: 1, y: 0, z: 0),
-                        perspective: isResult ? 0 : 0.15
+                        perspective: isResult ? 0.3 * fp : 0.15
                     )
                     .rotation3DEffect(
                         .degrees(rotY),
                         axis: (x: 0, y: 1, z: 0),
-                        perspective: isResult ? 0 : 0.15
+                        perspective: isResult ? 0.3 * fp : 0.15
                     )
                     .contentShape(RoundedRectangle(cornerRadius: 12))
                     .onTapGesture { }
@@ -351,10 +400,17 @@ struct ExplodedMaterialView: View {
 
         case .densityMap:
             if let img = activeDensityImage {
-                Image(decorative: img, scale: 1.0)
+                let imageView = Image(decorative: img, scale: 1.0)
                     .resizable()
                     .interpolation(.high)
-                    .colorEffect(ShaderLibrary.default.amberDensity())
+                if tier == .scanned {
+                    imageView
+                        .aspectRatio(contentMode: .fill)
+                        .colorEffect(ShaderLibrary.default.amberDensity())
+                } else {
+                    imageView
+                        .colorEffect(ShaderLibrary.default.amberDensity())
+                }
             } else {
                 Color.clear
             }
@@ -385,11 +441,9 @@ struct ExplodedMaterialView: View {
     }
 
     private var simulatedArgs: [Shader.Argument] {
-        let tiltIntensity = motionManager.tiltIntensity
-        let tiltAngle = motionManager.tiltAngle
         return [.boundingRect, .float(cardValues.fiberVisibility),
                 .float(0.06),
-                .float(tiltIntensity), .float(tiltAngle),
+                .float(combinedTiltIntensity), .float(combinedTiltAngle),
                 .float(colorScheme == .dark ? 0.0 : 1.0),
                 .float(cardValues.surface), .float(cardValues.warmth), .float(seed)]
     }
@@ -425,6 +479,7 @@ struct ExplodedMaterialView: View {
                 Image(decorative: img, scale: 1.0)
                     .resizable()
                     .interpolation(.high)
+                    .aspectRatio(contentMode: .fill)
                     .colorEffect(Shader(
                         function: ShaderLibrary.default.washiSimulated,
                         arguments: simulatedArgs
@@ -504,6 +559,7 @@ struct ExplodedMaterialView: View {
                         Image(decorative: img, scale: 1.0)
                             .resizable()
                             .interpolation(.high)
+                            .aspectRatio(contentMode: .fill)
                             .colorEffect(Shader(
                                 function: ShaderLibrary.default.washiSimulated,
                                 arguments: simulatedArgs
