@@ -1,0 +1,15 @@
+# SPM build artifacts
+.build/
+
+# macOS metadata
+.DS_Store
+
+# Xcode user-specific data
+xcuserdata/
+*.xcuserstate
+
+# SPM workspace metadata
+.swiftpm/
+
+# Local plans
+PLAN-*.md

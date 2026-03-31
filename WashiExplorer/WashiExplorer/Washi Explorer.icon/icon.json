@@ -17,12 +17,27 @@
       "layers" : [
         {
           "image-name" : "Frame Copy 7.png",
-          "name" : "Frame Copy 7"
+          "name" : "Frame Copy 7",
+          "position" : {
+            "scale" : 1.5,
+            "translation-in-points" : [
+              0,
+              0
+            ]
+          }
         },
         {
           "glass" : true,
+          "hidden" : true,
           "image-name" : "Frame Copy 6.png",
-          "name" : "Frame Copy 6"
+          "name" : "Frame Copy 6",
+          "position" : {
+            "scale" : 1,
+            "translation-in-points" : [
+              0,
+              0
+            ]
+          }
         }
       ],
       "shadow" : {

@@ -366,7 +366,7 @@
 /* Begin XCLocalSwiftPackageReference section */
 		437B31632F79E2380042A6DA /* XCLocalSwiftPackageReference "WashiMaterial" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = WashiMaterial;
+			relativePath = ..;
 		};
 /* End XCLocalSwiftPackageReference section */
 
