@@ -73,15 +73,7 @@ extension WashiWeight {
     }
 
     func fiberVisibility(for colorScheme: ColorScheme) -> Float {
-        switch (self, colorScheme) {
-        case (.thin, .light):     return 0.30
-        case (.thin, .dark):      return 0.03
-        case (.standard, .light): return 0.50
-        case (.standard, .dark):  return 0.05
-        case (.thick, .light):    return 0.60
-        case (.thick, .dark):     return 0.08
-        default:                  return 0.05
-        }
+        fiberVisibility  // 0.03 / 0.05 / 0.08 — same material, both modes
     }
 
     var surface: Float {
@@ -101,9 +93,9 @@ extension WashiWeight {
     /// Dark mode: shifts highlights from cool to warm — subtle material quality.
     func warmTintOpacity(for colorScheme: ColorScheme) -> Double {
         switch (self, colorScheme) {
-        case (.thin, .light):     return 0.16
-        case (.standard, .light): return 0.30
-        case (.thick, .light):    return 0.44
+        case (.thin, .light):     return 0.05
+        case (.standard, .light): return 0.10
+        case (.thick, .light):    return 0.15
         case (.thin, .dark):      return 0.0
         case (.standard, .dark):  return 0.0
         case (.thick, .dark):     return 0.0

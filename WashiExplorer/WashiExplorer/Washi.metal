@@ -698,47 +698,23 @@ float sparseProminentFiber(
     float perpendicularity = (1.0 - cos(2.0 * angleDiff)) / 2.0;
     float directionalBoost = tiltBoost * tiltIntensity * perpendicularity;
 
-    // Fine surface texture (same role as in Tiers 1-2)
+    // Asymmetric boost: shadow bias routes tilt energy to the visible channel
+    float shadowBoost = directionalBoost * tiltShadowBias;
+    float highlightBoost = directionalBoost * (1.0 - tiltShadowBias);
+    float darkVisibility = fiberVisibility + shadowBoost;
+    float brightVisibility = fiberVisibility + highlightBoost;
+
+    // Fine surface texture (micro-roughness in fiber gaps)
     float surfaceNoise = snoise(uv * 150.0 + seed + 300.0);
     density += surfaceNoise * surface * 0.08;
     density = saturate(density);
 
     // Output: semi-transparent modulation (premultiplied alpha)
     float modulation;
-
-    if (tiltShadowBias > 0.5) {
-        // ============================================================
-        // LIGHT MODE: contrast deepening
-        //
-        // Tilt doesn't add visibility — it deepens existing shadows
-        // via a power curve. Highlights stay unchanged.
-        // ============================================================
-
-        if (density > 0.5) {
-            float shadow = (density - 0.5) * 2.0;  // normalize to [0..1]
-
-            // Exponent: 1.0 = no change, lower = deeper shadows
-            float exponent = max(1.0 - directionalBoost * 16.0, 0.2);
-            shadow = pow(shadow, exponent);
-
-            modulation = shadow * fiberVisibility;
-        } else {
-            modulation = -((0.5 - density) * fiberVisibility * 2.0);
-        }
-
+    if (density > 0.5) {
+        modulation = (density - 0.5) * darkVisibility * 2.0;
     } else {
-        // ============================================================
-        // DARK MODE: additive highlight boost (existing, works well)
-        // ============================================================
-
-        float highlightBoost = directionalBoost;
-        float brightVisibility = fiberVisibility + highlightBoost;
-
-        if (density > 0.5) {
-            modulation = (density - 0.5) * fiberVisibility * 2.0;
-        } else {
-            modulation = -((0.5 - density) * brightVisibility * 2.0);
-        }
+        modulation = -((0.5 - density) * brightVisibility * 2.0);
     }
     float alpha = abs(modulation);
 

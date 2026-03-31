@@ -1,4 +1,5 @@
 import SwiftUI
+import WashiMaterial
 #if !os(macOS)
 import PhotosUI
 #endif
@@ -44,16 +45,12 @@ enum ExplorerWeight: String, CaseIterable, Identifiable {
         switch self { case .thin: 0.6; case .standard: 1.0; case .thick: 1.5 }
     }
 
-    /// Fiber visibility ratio relative to standard-light base (0.50).
+    /// Fiber visibility ratio relative to standard base (0.50).
     func fiberVisibilityRatio(for colorScheme: ColorScheme) -> Float {
-        switch (self, colorScheme) {
-        case (.thin, .light):     0.60
-        case (.standard, .light): 1.0
-        case (.thick, .light):    1.20
-        case (.thin, .dark):      0.06
-        case (.standard, .dark):  0.10
-        case (.thick, .dark):     0.16
-        @unknown default:         1.0
+        switch self {
+        case .thin:     0.06
+        case .standard: 0.10
+        case .thick:    0.16
         }
     }
 
@@ -70,7 +67,7 @@ enum ExplorerWeight: String, CaseIterable, Identifiable {
 
 // MARK: - Presets
 
-struct WashiPreset: Identifiable, Equatable {
+struct WashiPreset: Identifiable, Equatable, Codable {
     let id: String
     var name: String
     let fiberLength: Float
@@ -178,10 +175,15 @@ struct ContentView: View {
     @State private var warmth: Float = WashiPreset.kozo.warmth
 
     // Cream tint (default = production standard-light warmTintOpacity)
-    @State private var creamOpacity: Float = 0.30
+    @State private var creamOpacity: Float = 0.10
 
     @State private var activePreset: WashiPreset = .kozo
-    @State private var customPresets: [WashiPreset] = []
+    @State private var customPresets: [WashiPreset] = {
+        guard let data = UserDefaults.standard.data(forKey: "customPresets"),
+              let presets = try? JSONDecoder().decode([WashiPreset].self, from: data)
+        else { return [] }
+        return presets
+    }()
     @State private var editingPresetID: String?
     @FocusState private var editingFieldFocused: Bool
     @State private var backgroundMode: BackgroundMode = .gradient
@@ -219,6 +221,11 @@ struct ContentView: View {
     @State private var scanLoadGeneration: Int = 0
 
     private let seed: Float = 42.0
+    private let motionManager = WashiMotionManager.shared
+
+    // Custom preset reordering
+    @State private var reorderingPresetID: String?
+    @State private var reorderDragOffset: CGFloat = 0
 
     // 3D exploded view
     @State private var expandedCard: (tier: WashiTier, weight: ExplorerWeight)?
@@ -305,9 +312,9 @@ struct ContentView: View {
     /// Shader args for Simulated / Scanned tiers (8 float params + bounds).
     private func simulatedShaderArgs(for cv: CardValues) -> [Shader.Argument] {
         [.boundingRect, .float(cv.fiberVisibility),
-         .float(0.06),   // tiltBoost (static in explorer)
-         .float(0), .float(0),  // tiltIntensity, tiltAngle
-         .float(previewScheme == .dark ? 0.0 : 1.0),  // tiltShadowBias
+         .float(0.06),
+         .float(motionManager.tiltIntensity), .float(motionManager.tiltAngle),
+         .float(previewScheme == .dark ? 0.0 : 1.0),
          .float(cv.surface), .float(cv.warmth), .float(seed)]
     }
 
@@ -387,6 +394,11 @@ struct ContentView: View {
                     Image(systemName: showDebug ? "eye.fill" : "eye")
                 }
                 .help("Toggle debug view")
+            }
+        }
+        .onChange(of: customPresets) {
+            if let data = try? JSONEncoder().encode(customPresets) {
+                UserDefaults.standard.set(data, forKey: "customPresets")
             }
         }
         // Triple density map generation (all 3 weights on every param change)
@@ -494,6 +506,8 @@ struct ContentView: View {
                     .id("\(expanded.tier.rawValue)-\(expanded.weight.rawValue)")
             }
         }
+        .onAppear { motionManager.start() }
+        .onDisappear { motionManager.stop() }
     }
 
     @ViewBuilder
@@ -926,8 +940,48 @@ struct ContentView: View {
                     ForEach(WashiPreset.all) { preset in
                         presetChip(preset)
                     }
+
+                    if !customPresets.isEmpty {
+                        Divider()
+                            .frame(height: 20)
+                            .padding(.horizontal, 2)
+                    }
+
                     ForEach(customPresets) { preset in
+                        let isDragging = reorderingPresetID == preset.id
                         presetChip(preset)
+                            .offset(x: isDragging ? reorderDragOffset : 0)
+                            .scaleEffect(isDragging ? 1.08 : 1.0)
+                            .zIndex(isDragging ? 1 : 0)
+                            // Non-dragged items spring into new positions on swap;
+                            // dragged item has no position animation (tracks finger)
+                            .animation(isDragging ? nil : .interactiveSpring, value: customPresets.map(\.id))
+                            // Scale animates on drag start/end
+                            .animation(.spring(duration: 0.2), value: reorderingPresetID)
+                            .simultaneousGesture(
+                                LongPressGesture(minimumDuration: 0.3)
+                                    .sequenced(before: DragGesture())
+                                    .onChanged { value in
+                                        switch value {
+                                        case .second(true, let drag):
+                                            if reorderingPresetID != preset.id {
+                                                reorderingPresetID = preset.id
+                                            }
+                                            if let drag {
+                                                reorderDragOffset = drag.translation.width
+                                                checkReorderSwap()
+                                            }
+                                        default:
+                                            break
+                                        }
+                                    }
+                                    .onEnded { _ in
+                                        withAnimation(.spring(duration: 0.3)) {
+                                            reorderingPresetID = nil
+                                            reorderDragOffset = 0
+                                        }
+                                    }
+                            )
                     }
 
                     Button {
@@ -998,6 +1052,22 @@ struct ContentView: View {
                     deleteCustomPreset(preset)
                 }
             })
+        }
+    }
+
+    private func checkReorderSwap() {
+        guard let dragID = reorderingPresetID,
+              let index = customPresets.firstIndex(where: { $0.id == dragID })
+        else { return }
+
+        let threshold: CGFloat = 60
+
+        if reorderDragOffset > threshold && index < customPresets.count - 1 {
+            reorderDragOffset -= threshold
+            customPresets.swapAt(index, index + 1)
+        } else if reorderDragOffset < -threshold && index > 0 {
+            reorderDragOffset += threshold
+            customPresets.swapAt(index, index - 1)
         }
     }
 

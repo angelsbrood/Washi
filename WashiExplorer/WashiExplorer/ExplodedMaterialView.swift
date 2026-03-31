@@ -92,21 +92,11 @@ struct ExplodedMaterialView: View {
     }
 
     private var orbitX: Double {
-        if motionManager.isActive {
-            let pitch = motionManager.tiltIntensity * cos(motionManager.tiltAngle)
-            return baseOrbitX + Double(pitch) * 15.0
-        } else {
-            return baseOrbitX + Double(clampedDragHeight / 200.0) * 15.0
-        }
+        baseOrbitX + Double(clampedDragHeight / 200.0) * 15.0
     }
 
     private var orbitY: Double {
-        if motionManager.isActive {
-            let roll = motionManager.tiltIntensity * sin(motionManager.tiltAngle)
-            return baseOrbitY + Double(roll) * 15.0
-        } else {
-            return baseOrbitY + Double(clampedDragWidth / 200.0) * 15.0
-        }
+        baseOrbitY + Double(clampedDragWidth / 200.0) * 15.0
     }
 
     /// 0 = normal exploded view, 1 = focused on Result card

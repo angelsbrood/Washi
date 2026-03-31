@@ -13,8 +13,14 @@ struct WashiExplorerApp: App {
         WindowGroup("Washi Explorer") {
             ContentView()
                 #if os(macOS)
-                .frame(minWidth: 820, minHeight: 600)
+                .frame(
+                    minWidth: 820, idealWidth: 1200,
+                    minHeight: 600, idealHeight: 900
+                )
                 #endif
         }
+        #if os(macOS)
+        .defaultSize(width: 1200, height: 900)
+        #endif
     }
 }
