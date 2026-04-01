@@ -22,7 +22,7 @@ enum WashiScanProcessor {
         blurRadius: Float = 50.0,
         contrast: Float = 2.0
     ) -> CGImage {
-        let downscaled = downscale(image, maxDimension: 2048)
+        let downscaled = downscale(image, maxDimension: 1024)
         let width = downscaled.width
         let height = downscaled.height
         let count = width * height

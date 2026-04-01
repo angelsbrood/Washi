@@ -468,6 +468,7 @@ struct ContentView: View {
                 guard !Task.isCancelled else { return }
             }
             withAnimation(.easeIn(duration: 0.25)) { isGenerating = true }
+            defer { withAnimation(.easeOut(duration: 0.3)) { isGenerating = false } }
 
             let thinP = simulationParams(for: .thin)
             let stdP = simulationParams(for: .standard)
@@ -483,7 +484,6 @@ struct ContentView: View {
             densityImageThin = t
             densityImageStandard = s
             densityImageThick = k
-            withAnimation(.easeOut(duration: 0.3)) { isGenerating = false }
         }
         // Preset cache (generate all weights for built-in presets on launch)
         .task {
@@ -519,6 +519,7 @@ struct ContentView: View {
                 ScanCropView(image: image) { cropped in
                     scanSourceImage = cropped
                     scanLoadGeneration += 1
+                    showingScanCrop = false
                 }
             }
         }
@@ -530,6 +531,7 @@ struct ContentView: View {
                 guard !Task.isCancelled else { return }
             }
             withAnimation(.easeIn(duration: 0.25)) { isScanProcessing = true }
+            defer { withAnimation(.easeOut(duration: 0.3)) { isScanProcessing = false } }
             let radius = params.blurRadius
             let contrast = params.contrast
             let image = await Task.detached {
@@ -541,7 +543,6 @@ struct ContentView: View {
             }.value
             guard !Task.isCancelled else { return }
             scanDensityImage = image
-            withAnimation(.easeOut(duration: 0.3)) { isScanProcessing = false }
         }
     }
 
@@ -1362,6 +1363,7 @@ struct ContentView: View {
 
             for weight in ExplorerWeight.allCases {
                 guard !Task.isCancelled else { return }
+                await Task.yield()  // Let other queued tasks (scan processing) run
                 let key = "\(id)-\(weight.rawValue)"
 
                 let cached: CGImage? = await Task.detached {
