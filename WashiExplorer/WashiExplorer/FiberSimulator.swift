@@ -87,7 +87,30 @@ enum FiberSimulator {
         // Pre-compute meso-flocculation field
         let mesoField = generateMesoField(size: size, seed: params.seed)
 
-        // Nagashizuki formation passes
+        // --- Stage 1: Base mat (continuous paper body) ---
+        // Direct density floor with meso variation — no individual fibrils.
+        // Calibrated so mat normalizes to ~0.5 (shader neutral) after
+        // prominent fiber peaks set the max.
+        let matBaseDensity = lerp(3.0, 10.0, params.fiberFineness)
+            * Float(scaledFiberCount) / 4200.0
+        let matOrientField = generateMesoField(size: size, seed: params.seed &+ 42)
+
+        for y in 0..<size {
+            for x in 0..<size {
+                let idx = y * size + x
+                let mesoValue = mesoField[idx]
+                let density = matBaseDensity * (0.7 + mesoValue * 0.6)
+                buffer[idx] = density
+                // Smooth random orientation, weighted lightly so prominent
+                // fibers dominate where they exist
+                let matAngle = matOrientField[idx] * .pi
+                let weight = density * 0.2
+                dirXBuffer[idx] = cos(matAngle) * weight
+                dirYBuffer[idx] = sin(matAngle) * weight
+            }
+        }
+
+        // --- Stage 2: Prominent fibers (nagashizuki) ---
         let passes: [FormationPass] = [
             // Kakemizu: quick initial pour, strong gradient toward pour edge
             FormationPass(fraction: 0.40, baseAngle: 0.15, spreadMul: 1.0,
@@ -100,8 +123,9 @@ enum FiberSimulator {
                           flowAngle: 0.15, flowBias: 0.2, flowOscillations: 0),
         ]
 
-        // Compensation for meso rejection (~40%) and micro-floc expansion (~1.3×)
-        let compensationFactor: Float = 1.28
+        // Compensation for meso rejection (~40%), micro-floc expansion (~1.3×),
+        // and higher density needed for layered fiber texture
+        let compensationFactor: Float = 3.0
 
         for pass in passes {
             let count = Int(Float(scaledFiberCount) * pass.fraction * compensationFactor)
@@ -109,6 +133,14 @@ enum FiberSimulator {
             let flowSin = sin(pass.flowAngle)
 
             for _ in 0..<count {
+                // Per-fiber size variation: biased toward shorter fibers
+                // (beaten kozo has a wide distribution — many short, few long)
+                let sizeSample = rng.nextFloat()
+                let lengthScale = 0.3 + pow(sizeSample, 1.5) * 1.2  // 0.3× – 1.5×
+                let widthScale = 0.4 + lengthScale * 0.6 + rng.nextFloat() * 0.2  // correlated
+                let thisHalfLength = fiberHalfLength * lengthScale
+                let thisWidth = fiberWidth * widthScale
+
                 // Flow-biased placement
                 let rawAlong = rng.nextFloat()
                 let along = pass.flowBias < 0.001
@@ -145,8 +177,8 @@ enum FiberSimulator {
                 let clusterCount = isCluster ? Int(2 + rng.nextFloat() * 2) : 1
 
                 for c in 0..<clusterCount {
-                    let cOx = c == 0 ? ox : ox + (rng.nextFloat() - 0.5) * fiberWidth * 4
-                    let cOy = c == 0 ? oy : oy + (rng.nextFloat() - 0.5) * fiberWidth * 4
+                    let cOx = c == 0 ? ox : ox + (rng.nextFloat() - 0.5) * thisWidth * 4
+                    let cOy = c == 0 ? oy : oy + (rng.nextFloat() - 0.5) * thisWidth * 4
                     let cAngle = c == 0 ? angle : angle + (rng.nextFloat() - 0.5) * 0.1
 
                     drawFiber(
@@ -156,8 +188,8 @@ enum FiberSimulator {
                         size: size,
                         ox: cOx, oy: cOy,
                         angle: cAngle,
-                        halfLength: fiberHalfLength,
-                        width: fiberWidth,
+                        halfLength: thisHalfLength,
+                        width: thisWidth,
                         curvature: curvature
                     )
                 }
@@ -354,7 +386,7 @@ enum FiberSimulator {
 
     nonisolated private static var cacheDirectory: URL {
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
-        return caches.appendingPathComponent("WashiDensity-v4", isDirectory: true)
+        return caches.appendingPathComponent("WashiDensity-v9", isDirectory: true)
     }
 
     nonisolated static func loadCached(presetID: String) -> CGImage? {
