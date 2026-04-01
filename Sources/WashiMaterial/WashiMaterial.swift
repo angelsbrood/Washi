@@ -37,7 +37,7 @@ extension WashiWeight {
             FiberSimulator.FiberParams(
                 fiberLength: 0.55,
                 fiberFineness: 0.65,
-                fiberCount: 600,
+                fiberCount: 2500,
                 formationAlignment: 0.25,
                 kumo: 0.15,
                 kumoScale: 0.45,
@@ -47,7 +47,7 @@ extension WashiWeight {
             FiberSimulator.FiberParams(
                 fiberLength: 0.60,
                 fiberFineness: 0.55,
-                fiberCount: 1000,
+                fiberCount: 4200,
                 formationAlignment: 0.28,
                 kumo: 0.25,
                 kumoScale: 0.40,
@@ -57,7 +57,7 @@ extension WashiWeight {
             FiberSimulator.FiberParams(
                 fiberLength: 0.65,
                 fiberFineness: 0.45,
-                fiberCount: 1500,
+                fiberCount: 6300,
                 formationAlignment: 0.30,
                 kumo: 0.35,
                 kumoScale: 0.40,

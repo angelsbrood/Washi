@@ -61,8 +61,8 @@ public enum FiberSimulator {
         var dirYBuffer = [Float](repeating: 0.0, count: size * size)
         var rng = SeededRNG(seed: params.seed)
 
-        let fiberHalfLength = Float(size) * lerp(0.02, 0.08, params.fiberLength)
-        let fiberWidth = Float(size) * lerp(0.001, 0.004, 1.0 - params.fiberFineness)
+        let fiberHalfLength = Float(size) * lerp(0.006, 0.025, params.fiberLength)
+        let fiberWidth = Float(size) * lerp(0.0005, 0.0015, 1.0 - params.fiberFineness)
         let angularSpread = lerp(0.3, .pi, params.formationAlignment)
 
         // Nagashizuki formation passes

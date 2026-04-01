@@ -25,9 +25,12 @@ struct ExplodedMaterialView: View {
     let densityImage: CGImage?
     let scanDensityImage: CGImage?
     let seed: Float
+    let showDebug: Bool
+    let isGenerating: Bool
     let startFocused: Bool
     var transitionNamespace: Namespace.ID? = nil
     var transitionID: String? = nil
+    var onFocusChange: ((Bool) -> Void)? = nil
     let onDismiss: () -> Void
 
     @State private var isExploded = false
@@ -387,6 +390,25 @@ struct ExplodedMaterialView: View {
         .onDisappear {
             motionManager.stop()
         }
+        .onChange(of: isFocused) { _, newValue in
+            onFocusChange?(newValue)
+        }
+        .overlay {
+            if isGenerating && (tier == .simulated || tier == .scanned) {
+                Rectangle()
+                    .fill(.ultraThinMaterial)
+                    .ignoresSafeArea()
+                    .overlay { ProgressView() }
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        morphComplete = false
+                        perspectiveActive = false
+                        onDismiss()
+                    }
+                    .transition(.opacity)
+                    .animation(.easeInOut(duration: 0.3), value: isGenerating)
+            }
+        }
     }
 
     // MARK: - Layer Content (composited vs non-composited split)
@@ -594,47 +616,68 @@ struct ExplodedMaterialView: View {
 
         case .simulated:
             if let img = densityImage {
-                Color.clear
-                    .background { Rectangle().fill(cardValues.systemMaterial) }
-                    .overlay {
-                        Color(red: 0.94, green: 0.92, blue: 0.89)
-                            .opacity(cardValues.creamTintOpacity)
-                            .allowsHitTesting(false)
-                    }
-                    .overlay {
-                        Image(decorative: img, scale: 1.0)
-                            .resizable()
-                            .interpolation(.high)
-                            .colorEffect(Shader(
-                                function: ShaderLibrary.default.washiSimulated,
-                                arguments: simulatedArgs
-                            ))
-                            .allowsHitTesting(false)
-                    }
+                let debugOpacity = showDebug ? focusProgress : 0.0
+                ZStack {
+                    Color.clear
+                        .background { Rectangle().fill(cardValues.systemMaterial) }
+                        .overlay {
+                            Color(red: 0.94, green: 0.92, blue: 0.89)
+                                .opacity(cardValues.creamTintOpacity)
+                                .allowsHitTesting(false)
+                        }
+                        .overlay {
+                            Image(decorative: img, scale: 1.0)
+                                .resizable()
+                                .interpolation(.high)
+                                .colorEffect(Shader(
+                                    function: ShaderLibrary.default.washiSimulated,
+                                    arguments: simulatedArgs
+                                ))
+                                .allowsHitTesting(false)
+                        }
+                        .opacity(1 - debugOpacity)
+
+                    Image(decorative: img, scale: 1.0)
+                        .resizable()
+                        .interpolation(.high)
+                        .colorEffect(ShaderLibrary.default.amberDensity())
+                        .opacity(debugOpacity)
+                }
             } else {
                 Rectangle().fill(cardValues.systemMaterial)
             }
 
         case .scanned:
             if let img = scanDensityImage {
-                Color.clear
-                    .background { Rectangle().fill(cardValues.systemMaterial) }
-                    .overlay {
-                        Color(red: 0.94, green: 0.92, blue: 0.89)
-                            .opacity(cardValues.creamTintOpacity)
-                            .allowsHitTesting(false)
-                    }
-                    .overlay {
-                        Image(decorative: img, scale: 1.0)
-                            .resizable()
-                            .interpolation(.high)
-                            .aspectRatio(contentMode: .fill)
-                            .colorEffect(Shader(
-                                function: ShaderLibrary.default.washiSimulated,
-                                arguments: simulatedArgs
-                            ))
-                            .allowsHitTesting(false)
-                    }
+                let debugOpacity = showDebug ? focusProgress : 0.0
+                ZStack {
+                    Color.clear
+                        .background { Rectangle().fill(cardValues.systemMaterial) }
+                        .overlay {
+                            Color(red: 0.94, green: 0.92, blue: 0.89)
+                                .opacity(cardValues.creamTintOpacity)
+                                .allowsHitTesting(false)
+                        }
+                        .overlay {
+                            Image(decorative: img, scale: 1.0)
+                                .resizable()
+                                .interpolation(.high)
+                                .aspectRatio(contentMode: .fill)
+                                .colorEffect(Shader(
+                                    function: ShaderLibrary.default.washiSimulated,
+                                    arguments: simulatedArgs
+                                ))
+                                .allowsHitTesting(false)
+                        }
+                        .opacity(1 - debugOpacity)
+
+                    Image(decorative: img, scale: 1.0)
+                        .resizable()
+                        .interpolation(.high)
+                        .aspectRatio(contentMode: .fill)
+                        .colorEffect(ShaderLibrary.default.amberDensity())
+                        .opacity(debugOpacity)
+                }
             } else {
                 Rectangle().fill(cardValues.systemMaterial)
             }
@@ -666,27 +709,48 @@ struct ExplodedMaterialView: View {
 
         case .simulated:
             if let img = densityImage {
-                Image(decorative: img, scale: 1.0)
-                    .resizable()
-                    .interpolation(.high)
-                    .colorEffect(Shader(
-                        function: ShaderLibrary.default.washiSimulated,
-                        arguments: simulatedArgs
-                    ))
-                    .allowsHitTesting(false)
+                let debugOpacity = showDebug ? focusProgress : 0.0
+                ZStack {
+                    Image(decorative: img, scale: 1.0)
+                        .resizable()
+                        .interpolation(.high)
+                        .colorEffect(Shader(
+                            function: ShaderLibrary.default.washiSimulated,
+                            arguments: simulatedArgs
+                        ))
+                        .opacity(1 - debugOpacity)
+
+                    Image(decorative: img, scale: 1.0)
+                        .resizable()
+                        .interpolation(.high)
+                        .colorEffect(ShaderLibrary.default.amberDensity())
+                        .opacity(debugOpacity)
+                }
+                .allowsHitTesting(false)
             }
 
         case .scanned:
             if let img = scanDensityImage {
-                Image(decorative: img, scale: 1.0)
-                    .resizable()
-                    .interpolation(.high)
-                    .aspectRatio(contentMode: .fill)
-                    .colorEffect(Shader(
-                        function: ShaderLibrary.default.washiSimulated,
-                        arguments: simulatedArgs
-                    ))
-                    .allowsHitTesting(false)
+                let debugOpacity = showDebug ? focusProgress : 0.0
+                ZStack {
+                    Image(decorative: img, scale: 1.0)
+                        .resizable()
+                        .interpolation(.high)
+                        .aspectRatio(contentMode: .fill)
+                        .colorEffect(Shader(
+                            function: ShaderLibrary.default.washiSimulated,
+                            arguments: simulatedArgs
+                        ))
+                        .opacity(1 - debugOpacity)
+
+                    Image(decorative: img, scale: 1.0)
+                        .resizable()
+                        .interpolation(.high)
+                        .aspectRatio(contentMode: .fill)
+                        .colorEffect(ShaderLibrary.default.amberDensity())
+                        .opacity(debugOpacity)
+                }
+                .allowsHitTesting(false)
             }
         }
     }

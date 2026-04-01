@@ -47,7 +47,7 @@ enum FiberSimulator {
         ) {
             self.fiberLength = fiberLength
             self.fiberFineness = fiberFineness
-            self.fiberCount = Int(300 + (2000 - 300) * formationLayers)
+            self.fiberCount = Int(1500 + (8000 - 1500) * formationLayers)
             self.formationAlignment = formationAlignment
             self.kumo = kumo
             self.kumoScale = kumoScale
@@ -63,8 +63,8 @@ enum FiberSimulator {
         var dirYBuffer = [Float](repeating: 0.0, count: size * size)
         var rng = SeededRNG(seed: params.seed)
 
-        let fiberHalfLength = Float(size) * lerp(0.02, 0.08, params.fiberLength)
-        let fiberWidth = Float(size) * lerp(0.001, 0.004, 1.0 - params.fiberFineness)
+        let fiberHalfLength = Float(size) * lerp(0.006, 0.025, params.fiberLength)
+        let fiberWidth = Float(size) * lerp(0.0005, 0.0015, 1.0 - params.fiberFineness)
         let angularSpread = lerp(0.3, .pi, params.formationAlignment)
 
         // Nagashizuki formation passes
@@ -245,7 +245,7 @@ enum FiberSimulator {
 
     nonisolated private static var cacheDirectory: URL {
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
-        return caches.appendingPathComponent("WashiDensity-v2", isDirectory: true)
+        return caches.appendingPathComponent("WashiDensity-v3", isDirectory: true)
     }
 
     nonisolated static func loadCached(presetID: String) -> CGImage? {

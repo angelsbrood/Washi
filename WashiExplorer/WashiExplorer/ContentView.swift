@@ -108,7 +108,7 @@ struct WashiPreset: Identifiable, Equatable, Codable {
 extension WashiPreset {
     // Kozo: production Standard values from WashiWeight in WashiMaterial.swift.
     // fiberVisibility is the standard-light base; per-weight/scheme scaling handles the rest.
-    // formationLayers 0.4118 → fiberCount = Int(300 + 1700 * 0.4118) = 1000.
+    // formationLayers 0.4118 → fiberCount = Int(1500 + 6500 * 0.4118) = 4177.
     static let kozo = WashiPreset(
         id: "kozo", name: "Kozo",
         fiberLength: 0.60, fiberFineness: 0.55, fiberVisibility: 0.50,
@@ -155,7 +155,8 @@ enum WashiTier: String, CaseIterable {
 // MARK: - Background Mode
 
 enum BackgroundMode: String, CaseIterable, Identifiable {
-    case gradient = "Gradient"
+    case gradient = "Tanizaki"
+    case muji = "Muji"
     case light = "Light"
     case dark = "Dark"
     case custom = "Custom"
@@ -217,6 +218,7 @@ struct ContentView: View {
     @State private var backgroundMode: BackgroundMode = .gradient
     @State private var showDebug = false
     @State private var previewScheme: ColorScheme = .dark
+    @State private var didApplySystemScheme = false
 
     // Three density maps for Simulated row (one per weight)
     @State private var densityImageThin: CGImage?
@@ -260,6 +262,7 @@ struct ContentView: View {
     // 3D exploded view
     @State private var expandedCard: (tier: WashiTier, weight: ExplorerWeight)?
     @State private var expandedGeneration = 0
+    @State private var isCardFocused = false
     @Namespace private var cardTransition
 
     // MARK: Density generation trigger
@@ -302,9 +305,9 @@ struct ContentView: View {
     // MARK: Per-weight derivation
 
     private func cardValues(for weight: ExplorerWeight) -> CardValues {
-        let stdCount = 300.0 + 1700.0 * formationLayers
-        let weightCount = max(stdCount * weight.fiberCountRatio, 300)
-        let weightFL = clamp01((weightCount - 300) / 1700)
+        let stdCount = 1500.0 + 6500.0 * formationLayers
+        let weightCount = max(stdCount * weight.fiberCountRatio, 1500)
+        let weightFL = clamp01((weightCount - 1500) / 6500)
 
         #if os(iOS)
         let platformBlurStyle = weight.uiBlurStyle
@@ -391,19 +394,16 @@ struct ContentView: View {
         }
         .toolbar {
             ToolbarItemGroup(placement: .automatic) {
-                Button {
-                    previewScheme = previewScheme == .dark ? .light : .dark
-                } label: {
-                    Image(systemName: previewScheme == .dark
-                          ? "moon.fill" : "sun.max.fill")
-                }
-                .help("Toggle light/dark preview")
-
                 Menu {
                     Button {
                         backgroundMode = .gradient
                     } label: {
-                        Label("Gradient", systemImage: "paintpalette")
+                        Label("Tanizaki", systemImage: "paintpalette")
+                    }
+                    Button {
+                        backgroundMode = .muji
+                    } label: {
+                        Label("Muji", systemImage: "leaf")
                     }
                     Button {
                         backgroundMode = .light
@@ -427,11 +427,20 @@ struct ContentView: View {
                 .help("Background")
 
                 Button {
+                    previewScheme = previewScheme == .dark ? .light : .dark
+                } label: {
+                    Image(systemName: previewScheme == .dark
+                          ? "moon.fill" : "sun.max.fill")
+                }
+                .help("Toggle light/dark preview")
+
+                Button {
                     showDebug.toggle()
                 } label: {
                     Image(systemName: showDebug ? "eye.fill" : "eye")
                 }
                 .help("Toggle debug view")
+                .disabled(expandedCard != nil && !isCardFocused)
             }
         }
         .onChange(of: customPresets) {
@@ -552,7 +561,14 @@ struct ContentView: View {
                     .id(expandedGeneration)
             }
         }
-        .onAppear { motionManager.start() }
+        .onAppear {
+            motionManager.start()
+            if !didApplySystemScheme {
+                didApplySystemScheme = true
+                previewScheme = colorScheme
+                backgroundMode = colorScheme == .dark ? .gradient : .muji
+            }
+        }
         .onDisappear { motionManager.stop() }
     }
 
@@ -567,10 +583,16 @@ struct ContentView: View {
             densityImage: tier == .simulated ? densityImage(for: weight) : nil,
             scanDensityImage: tier == .scanned ? scanDensityImage : nil,
             seed: seed,
+            showDebug: showDebug,
+            isGenerating: isGenerating,
             startFocused: true,
             transitionNamespace: cardTransition,
             transitionID: "\(tier.rawValue)-\(weight.rawValue)",
+            onFocusChange: { focused in
+                isCardFocused = focused
+            },
             onDismiss: {
+                isCardFocused = false
                 withAnimation(.spring(duration: 0.5, bounce: 0.12)) {
                     expandedCard = nil
                 }
@@ -652,6 +674,16 @@ struct ContentView: View {
                 startPoint: .bottomLeading,
                 endPoint: .topTrailing
             )
+        case .muji:
+            LinearGradient(
+                colors: [
+                    Color(red: 0.55, green: 0.68, blue: 0.80),
+                    Color(red: 0.82, green: 0.82, blue: 0.80),
+                    Color(red: 0.78, green: 0.73, blue: 0.66)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
         case .light:
             Color.white
         case .dark:
@@ -701,11 +733,9 @@ struct ContentView: View {
         Color.clear
             .background { Rectangle().fill(cv.systemMaterial) }
             .overlay {
-                if !showDebug {
-                    Color(red: 0.94, green: 0.92, blue: 0.89)
-                        .opacity(cv.creamTintOpacity)
-                        .allowsHitTesting(false)
-                }
+                Color(red: 0.94, green: 0.92, blue: 0.89)
+                    .opacity(showDebug ? 0 : cv.creamTintOpacity)
+                    .allowsHitTesting(false)
             }
             .overlay {
                 Color.white
@@ -722,11 +752,9 @@ struct ContentView: View {
         Color.clear
             .background { Rectangle().fill(cv.systemMaterial) }
             .overlay {
-                if !showDebug {
-                    Color(red: 0.94, green: 0.92, blue: 0.89)
-                        .opacity(cv.creamTintOpacity)
-                        .allowsHitTesting(false)
-                }
+                Color(red: 0.94, green: 0.92, blue: 0.89)
+                    .opacity(showDebug ? 0 : cv.creamTintOpacity)
+                    .allowsHitTesting(false)
             }
             .overlay {
                 Color.white
@@ -741,33 +769,37 @@ struct ContentView: View {
         let image = densityImage(for: weight)
         let args = simulatedShaderArgs(for: cv)
 
-        if showDebug, let cgImage = image {
-            Image(decorative: cgImage, scale: 1.0)
-                .resizable()
-                .interpolation(.high)
-                .colorEffect(ShaderLibrary.default.amberDensity())
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-                .overlay { generatingOverlay }
-        } else if let cgImage = image {
-            Color.clear
-                .background { Rectangle().fill(cv.systemMaterial) }
-                .overlay {
-                    Color(red: 0.94, green: 0.92, blue: 0.89)
-                        .opacity(cv.creamTintOpacity)
-                        .allowsHitTesting(false)
-                }
-                .overlay {
-                    Image(decorative: cgImage, scale: 1.0)
-                        .resizable()
-                        .interpolation(.high)
-                        .colorEffect(Shader(
-                            function: ShaderLibrary.default.washiSimulated,
-                            arguments: args
-                        ))
-                        .allowsHitTesting(false)
-                }
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-                .overlay { generatingOverlay }
+        if let cgImage = image {
+            ZStack {
+                // Normal material stack
+                Color.clear
+                    .background { Rectangle().fill(cv.systemMaterial) }
+                    .overlay {
+                        Color(red: 0.94, green: 0.92, blue: 0.89)
+                            .opacity(cv.creamTintOpacity)
+                            .allowsHitTesting(false)
+                    }
+                    .overlay {
+                        Image(decorative: cgImage, scale: 1.0)
+                            .resizable()
+                            .interpolation(.high)
+                            .colorEffect(Shader(
+                                function: ShaderLibrary.default.washiSimulated,
+                                arguments: args
+                            ))
+                            .allowsHitTesting(false)
+                    }
+                    .opacity(showDebug ? 0 : 1)
+
+                // Debug amber density
+                Image(decorative: cgImage, scale: 1.0)
+                    .resizable()
+                    .interpolation(.high)
+                    .colorEffect(ShaderLibrary.default.amberDensity())
+                    .opacity(showDebug ? 1 : 0)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .overlay { generatingOverlay }
         } else {
             Color.clear
                 .background { Rectangle().fill(cv.systemMaterial) }
@@ -793,35 +825,39 @@ struct ContentView: View {
         let args = simulatedShaderArgs(for: cv)
 
         Group {
-            if showDebug, let cgImage = scanDensityImage {
-                Image(decorative: cgImage, scale: 1.0)
-                    .resizable()
-                    .interpolation(.high)
-                    .aspectRatio(contentMode: .fill)
-                    .colorEffect(ShaderLibrary.default.amberDensity())
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                    .overlay { scanProcessingOverlay }
-            } else if let cgImage = scanDensityImage {
-                Color.clear
-                    .background { Rectangle().fill(cv.systemMaterial) }
-                    .overlay {
-                        Color(red: 0.94, green: 0.92, blue: 0.89)
-                            .opacity(cv.creamTintOpacity)
-                            .allowsHitTesting(false)
-                    }
-                    .overlay {
-                        Image(decorative: cgImage, scale: 1.0)
-                            .resizable()
-                            .interpolation(.high)
-                            .aspectRatio(contentMode: .fill)
-                            .colorEffect(Shader(
-                                function: ShaderLibrary.default.washiSimulated,
-                                arguments: args
-                            ))
-                            .allowsHitTesting(false)
-                    }
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                    .overlay { scanProcessingOverlay }
+            if let cgImage = scanDensityImage {
+                ZStack {
+                    // Normal material stack
+                    Color.clear
+                        .background { Rectangle().fill(cv.systemMaterial) }
+                        .overlay {
+                            Color(red: 0.94, green: 0.92, blue: 0.89)
+                                .opacity(cv.creamTintOpacity)
+                                .allowsHitTesting(false)
+                        }
+                        .overlay {
+                            Image(decorative: cgImage, scale: 1.0)
+                                .resizable()
+                                .interpolation(.high)
+                                .aspectRatio(contentMode: .fill)
+                                .colorEffect(Shader(
+                                    function: ShaderLibrary.default.washiSimulated,
+                                    arguments: args
+                                ))
+                                .allowsHitTesting(false)
+                        }
+                        .opacity(showDebug ? 0 : 1)
+
+                    // Debug amber density
+                    Image(decorative: cgImage, scale: 1.0)
+                        .resizable()
+                        .interpolation(.high)
+                        .aspectRatio(contentMode: .fill)
+                        .colorEffect(ShaderLibrary.default.amberDensity())
+                        .opacity(showDebug ? 1 : 0)
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .overlay { scanProcessingOverlay }
             } else {
                 Color.clear
                     .background { Rectangle().fill(cv.systemMaterial) }
@@ -1051,6 +1087,7 @@ struct ContentView: View {
     private var backgroundIcon: String {
         switch backgroundMode {
         case .gradient: "paintpalette"
+        case .muji: "leaf"
         case .light: "square.filled.on.square"
         case .dark: "square.fill"
         case .custom: "photo"
@@ -1256,9 +1293,9 @@ struct ContentView: View {
 
     /// Compute simulation parameters for a given weight from current slider state.
     private func simulationParams(for weight: ExplorerWeight) -> FiberSimulator.FiberParams {
-        let stdCount = 300.0 + 1700.0 * formationLayers
-        let weightCount = max(stdCount * weight.fiberCountRatio, 300)
-        let weightFL = clamp01((weightCount - 300) / 1700)
+        let stdCount = 1500.0 + 6500.0 * formationLayers
+        let weightCount = max(stdCount * weight.fiberCountRatio, 1500)
+        let weightFL = clamp01((weightCount - 1500) / 6500)
 
         return FiberSimulator.FiberParams(
             fiberLength: clamp01(fiberLength + weight.fiberLengthOffset),
@@ -1277,9 +1314,9 @@ struct ContentView: View {
         weight: ExplorerWeight,
         seed: Float
     ) -> FiberSimulator.FiberParams {
-        let stdCount = 300.0 + 1700.0 * preset.formationLayers
-        let weightCount = max(stdCount * weight.fiberCountRatio, 300)
-        let weightFL = clamp01((weightCount - 300) / 1700)
+        let stdCount = 1500.0 + 6500.0 * preset.formationLayers
+        let weightCount = max(stdCount * weight.fiberCountRatio, 1500)
+        let weightFL = clamp01((weightCount - 1500) / 6500)
 
         return FiberSimulator.FiberParams(
             fiberLength: clamp01(preset.fiberLength + weight.fiberLengthOffset),
