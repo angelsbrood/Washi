@@ -402,7 +402,12 @@ struct ExplodedMaterialView: View {
                 cornerRadius: 12
             )
         } else {
-            // Non-composited layers: SwiftUI rotation (no blur concern)
+            // Non-composited layers: SwiftUI rotation (no blur concern).
+            // System blur material goes black with perspective > 0
+            // (same bug fixed for Result card via CALayer.transform),
+            // so zero it out — orthographic at ±15° is imperceptible.
+            let layerPerspective: Double = layer.kind == .systemBlur ? 0 : 0.15
+
             layerView(for: layer)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
                 .overlay {
@@ -412,12 +417,12 @@ struct ExplodedMaterialView: View {
                 .rotation3DEffect(
                     .degrees(rotX),
                     axis: (x: 1, y: 0, z: 0),
-                    perspective: 0.15
+                    perspective: layerPerspective
                 )
                 .rotation3DEffect(
                     .degrees(rotY),
                     axis: (x: 0, y: 1, z: 0),
-                    perspective: 0.15
+                    perspective: layerPerspective
                 )
         }
     }
