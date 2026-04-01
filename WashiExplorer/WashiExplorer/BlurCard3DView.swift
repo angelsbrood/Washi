@@ -31,10 +31,9 @@ final class BlurCard3DContainer: UIView {
         let dy = (0.5 - ap.y) * h
 
         var t = CATransform3DIdentity
-        t = CATransform3DTranslate(t, -dx, -dy, 0)
+        t = CATransform3DTranslate(t, dx, dy, 0)
         t = CATransform3DRotate(t, CGFloat(rotY) * .pi / 180.0, 0, 1, 0)
         t = CATransform3DRotate(t, CGFloat(rotX) * .pi / 180.0, 1, 0, 0)
-        t = CATransform3DTranslate(t, dx, dy, 0)
 
         let maxDim = max(w, h)
         if perspective > 0.001 && maxDim > 0 {
@@ -42,6 +41,8 @@ final class BlurCard3DContainer: UIView {
             persp.m34 = -CGFloat(perspective) / maxDim
             t = CATransform3DConcat(t, persp)
         }
+
+        t = CATransform3DTranslate(t, -dx, -dy, 0)
 
         CATransaction.begin()
         CATransaction.setDisableActions(true)
@@ -151,9 +152,8 @@ import AppKit
 private let creamTintColor = NSColor(red: 0.94, green: 0.92, blue: 0.89, alpha: 1.0)
 
 /// Inner view that holds all content and owns the 3D transform.
-/// Layer-hosting mode: we set the root layer before wantsLayer, so
-/// AppKit cannot override anchorPoint or position. The outer container
-/// sets our frame manually in layout(); we apply the 3D transform here.
+/// The outer container sets our frame manually in layout(); we apply
+/// the 3D transform here with adaptive center-pivot compensation.
 final class TransformView: NSView {
 
     var rotX: Double = 0
@@ -186,10 +186,9 @@ final class TransformView: NSView {
         let dy = (0.5 - ap.y) * h
 
         var t = CATransform3DIdentity
-        t = CATransform3DTranslate(t, -dx, -dy, 0)
+        t = CATransform3DTranslate(t, dx, dy, 0)
         t = CATransform3DRotate(t, CGFloat(rotY) * .pi / 180.0, 0, 1, 0)
         t = CATransform3DRotate(t, CGFloat(rotX) * .pi / 180.0, 1, 0, 0)
-        t = CATransform3DTranslate(t, dx, dy, 0)
 
         let maxDim = max(w, h)
         if perspective > 0.001 && maxDim > 0 {
@@ -197,6 +196,8 @@ final class TransformView: NSView {
             persp.m34 = -CGFloat(perspective) / maxDim
             t = CATransform3DConcat(t, persp)
         }
+
+        t = CATransform3DTranslate(t, -dx, -dy, 0)
 
         CATransaction.begin()
         CATransaction.setDisableActions(true)
