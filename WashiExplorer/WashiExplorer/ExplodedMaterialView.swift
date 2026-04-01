@@ -236,7 +236,7 @@ struct ExplodedMaterialView: View {
                     .contentShape(RoundedRectangle(cornerRadius: 12))
                     .onTapGesture { }
                     .modifier(CardTransitionModifier(
-                        apply: isResult && !morphComplete,
+                        apply: isResult,
                         id: transitionID,
                         namespace: transitionNamespace
                     ))
@@ -386,18 +386,9 @@ struct ExplodedMaterialView: View {
         rotX: Double, rotY: Double, fp: Double
     ) -> some View {
         if isResult {
-            // The SwiftUI compositedView is always the base layer.
-            // It provides stable view identity for matchedGeometryEffect
-            // and correct rotation matching with other layers.
-            // BlurCard3DView overlays on top only in focus mode (where
-            // perspective > 0 breaks SwiftUI's blur sampling).
-            let usePlatformBlur = isFocused && morphComplete
-
-            // During morph (!morphComplete), use perspective=0 so the
-            // SwiftUI blur renders correctly. Perspective only matters
-            // visually in focus mode, where BlurCard3DView takes over.
-            let swiftUIPerspective = morphComplete ? 0.3 * fp : 0.0
-
+            // Both views always in tree. SwiftUI compositedView provides
+            // stable identity. BlurCard3DView handles 3D perspective
+            // (blur-safe CATransform3D). They swap at morphComplete.
             ZStack {
                 compositedView
                     .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -408,26 +399,25 @@ struct ExplodedMaterialView: View {
                     .rotation3DEffect(
                         .degrees(rotX),
                         axis: (x: 1, y: 0, z: 0),
-                        perspective: swiftUIPerspective
+                        perspective: 0
                     )
                     .rotation3DEffect(
                         .degrees(rotY),
                         axis: (x: 0, y: 1, z: 0),
-                        perspective: swiftUIPerspective
+                        perspective: 0
                     )
-                    .opacity(usePlatformBlur ? 0 : 1)
+                    .opacity(morphComplete ? 0 : 1)
 
-                if usePlatformBlur {
-                    BlurCard3DView(
-                        blurStyle: cardValues.blurStyle,
-                        creamOpacity: CGFloat(cardValues.creamTintOpacity),
-                        fiberOverlay: AnyView(fiberOverlayForTier()),
-                        rotX: rotX,
-                        rotY: rotY,
-                        perspective: 0.3 * fp,
-                        cornerRadius: 12
-                    )
-                }
+                BlurCard3DView(
+                    blurStyle: cardValues.blurStyle,
+                    creamOpacity: CGFloat(cardValues.creamTintOpacity),
+                    fiberOverlay: AnyView(fiberOverlayForTier()),
+                    rotX: rotX,
+                    rotY: rotY,
+                    perspective: morphComplete ? 0.3 * fp : 0,
+                    cornerRadius: 12
+                )
+                .opacity(morphComplete ? 1 : 0)
             }
         } else {
             // Non-composited layers: SwiftUI rotation (no blur concern)

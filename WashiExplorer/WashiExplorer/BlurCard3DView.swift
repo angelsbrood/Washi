@@ -23,18 +23,16 @@ final class BlurCard3DContainer: UIView {
 
     func applyTransform() {
         var t = CATransform3DIdentity
-        // Scale perspective by view dimension to match SwiftUI's
-        // rotation3DEffect(perspective:) visual output.
         let maxDim = max(bounds.width, bounds.height)
         if perspective > 0.001 && maxDim > 0 {
             t.m34 = -CGFloat(perspective) / maxDim
         }
-        // Y then X in code order: CATransform3DRotate post-multiplies,
-        // so this produces RotY * RotX * P — matching SwiftUI's visual
-        // compositing (X-rotation inner, Y-rotation outer).
         t = CATransform3DRotate(t, CGFloat(rotY) * .pi / 180.0, 0, 1, 0)
         t = CATransform3DRotate(t, CGFloat(rotX) * .pi / 180.0, 1, 0, 0)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
         layer.transform = t
+        CATransaction.commit()
     }
 }
 
@@ -177,7 +175,10 @@ final class BlurCard3DContainer: NSView {
         }
         t = CATransform3DRotate(t, CGFloat(rotY) * .pi / 180.0, 0, 1, 0)
         t = CATransform3DRotate(t, CGFloat(rotX) * .pi / 180.0, 1, 0, 0)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
         layer.transform = t
+        CATransaction.commit()
     }
 }
 
@@ -203,6 +204,7 @@ struct BlurCard3DView: NSViewRepresentable {
         effectView.material = blurStyle
         effectView.blendingMode = .withinWindow
         effectView.state = .active
+        effectView.isEmphasized = false
         effectView.translatesAutoresizingMaskIntoConstraints = false
         container.addSubview(effectView)
         NSLayoutConstraint.activate([
