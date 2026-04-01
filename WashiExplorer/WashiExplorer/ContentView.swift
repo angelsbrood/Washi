@@ -1,5 +1,10 @@
 import SwiftUI
 import WashiMaterial
+#if canImport(UIKit)
+import UIKit
+#elseif canImport(AppKit)
+import AppKit
+#endif
 #if !os(macOS)
 import PhotosUI
 #endif
@@ -63,6 +68,24 @@ enum ExplorerWeight: String, CaseIterable, Identifiable {
     var creamRatio: Double {
         switch self { case .thin: 0.533; case .standard: 1.0; case .thick: 1.467 }
     }
+
+    #if os(iOS)
+    var uiBlurStyle: UIBlurEffect.Style {
+        switch self {
+        case .thin:     .systemUltraThinMaterial
+        case .standard: .systemThinMaterial
+        case .thick:    .systemMaterial
+        }
+    }
+    #elseif os(macOS)
+    var nsBlurMaterial: NSVisualEffectView.Material {
+        switch self {
+        case .thin:     .hudWindow
+        case .standard: .popover
+        case .thick:    .menu
+        }
+    }
+    #endif
 }
 
 // MARK: - Presets
@@ -154,6 +177,11 @@ struct CardValues {
     let warmth: Float
     let creamTintOpacity: Double
     let systemMaterial: AnyShapeStyle
+    #if os(iOS)
+    let blurStyle: UIBlurEffect.Style
+    #elseif os(macOS)
+    let blurStyle: NSVisualEffectView.Material
+    #endif
 }
 
 // MARK: - Content View
@@ -278,6 +306,12 @@ struct ContentView: View {
         let weightCount = max(stdCount * weight.fiberCountRatio, 300)
         let weightFL = clamp01((weightCount - 300) / 1700)
 
+        #if os(iOS)
+        let platformBlurStyle = weight.uiBlurStyle
+        #else
+        let platformBlurStyle = weight.nsBlurMaterial
+        #endif
+
         return CardValues(
             fiberLength: clamp01(fiberLength + weight.fiberLengthOffset),
             fiberFineness: clamp01(fiberFineness + weight.fiberFinenessOffset),
@@ -290,7 +324,8 @@ struct ContentView: View {
             warmth: warmth,
             creamTintOpacity: Double(creamOpacity) * weight.creamRatio
                 * (previewScheme == .dark ? 0.5 : 1.0),
-            systemMaterial: weight.systemMaterial
+            systemMaterial: weight.systemMaterial,
+            blurStyle: platformBlurStyle
         )
     }
 

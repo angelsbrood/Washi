@@ -224,27 +224,15 @@ struct ExplodedMaterialView: View {
                 // Opacity: non-Result layers fade out in focus mode
                 let opacity = isResult ? layerOpacity(index) : layerOpacity(index) * (1 - fp)
 
-                layerView(for: layer)
+                cardContent(
+                    layer: layer, isResult: isResult,
+                    rotX: rotX, rotY: rotY, fp: fp
+                )
                     .frame(
                         width: isResult ? cardWidth * 1.1 : cardWidth,
                         height: isResult ? cardHeight * 1.1 : cardHeight
                     )
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 12)
-                            .strokeBorder(.white.opacity(0.1), lineWidth: 0.5)
-                    }
                     .shadow(color: .black.opacity(isExploded ? 0.2 : 0), radius: 12, x: 4, y: 4)
-                    .rotation3DEffect(
-                        .degrees(rotX),
-                        axis: (x: 1, y: 0, z: 0),
-                        perspective: isResult ? 0.3 * fp : 0.15
-                    )
-                    .rotation3DEffect(
-                        .degrees(rotY),
-                        axis: (x: 0, y: 1, z: 0),
-                        perspective: isResult ? 0.3 * fp : 0.15
-                    )
                     .contentShape(RoundedRectangle(cornerRadius: 12))
                     .onTapGesture { }
                     .modifier(CardTransitionModifier(
@@ -387,6 +375,78 @@ struct ExplodedMaterialView: View {
         }
         .onDisappear {
             motionManager.stop()
+        }
+    }
+
+    // MARK: - Layer Content (composited vs non-composited split)
+
+    @ViewBuilder
+    private func cardContent(
+        layer: ExplodedLayer, isResult: Bool,
+        rotX: Double, rotY: Double, fp: Double
+    ) -> some View {
+        if isResult {
+            // The SwiftUI compositedView is always the base layer.
+            // It provides stable view identity for matchedGeometryEffect
+            // and correct rotation matching with other layers.
+            // BlurCard3DView overlays on top only in focus mode (where
+            // perspective > 0 breaks SwiftUI's blur sampling).
+            let usePlatformBlur = isFocused && morphComplete
+
+            // During morph (!morphComplete), use perspective=0 so the
+            // SwiftUI blur renders correctly. Perspective only matters
+            // visually in focus mode, where BlurCard3DView takes over.
+            let swiftUIPerspective = morphComplete ? 0.3 * fp : 0.0
+
+            ZStack {
+                compositedView
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 12)
+                            .strokeBorder(.white.opacity(0.1), lineWidth: 0.5)
+                    }
+                    .rotation3DEffect(
+                        .degrees(rotX),
+                        axis: (x: 1, y: 0, z: 0),
+                        perspective: swiftUIPerspective
+                    )
+                    .rotation3DEffect(
+                        .degrees(rotY),
+                        axis: (x: 0, y: 1, z: 0),
+                        perspective: swiftUIPerspective
+                    )
+                    .opacity(usePlatformBlur ? 0 : 1)
+
+                if usePlatformBlur {
+                    BlurCard3DView(
+                        blurStyle: cardValues.blurStyle,
+                        creamOpacity: CGFloat(cardValues.creamTintOpacity),
+                        fiberOverlay: AnyView(fiberOverlayForTier()),
+                        rotX: rotX,
+                        rotY: rotY,
+                        perspective: 0.3 * fp,
+                        cornerRadius: 12
+                    )
+                }
+            }
+        } else {
+            // Non-composited layers: SwiftUI rotation (no blur concern)
+            layerView(for: layer)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 12)
+                        .strokeBorder(.white.opacity(0.1), lineWidth: 0.5)
+                }
+                .rotation3DEffect(
+                    .degrees(rotX),
+                    axis: (x: 1, y: 0, z: 0),
+                    perspective: 0.15
+                )
+                .rotation3DEffect(
+                    .degrees(rotY),
+                    axis: (x: 0, y: 1, z: 0),
+                    perspective: 0.15
+                )
         }
     }
 
@@ -568,6 +628,56 @@ struct ExplodedMaterialView: View {
                     }
             } else {
                 Rectangle().fill(cardValues.systemMaterial)
+            }
+        }
+    }
+
+    // MARK: Fiber Overlay (for BlurCard3DView hosting)
+
+    /// Returns the fiber shader content only — no blur base, no cream tint.
+    /// Cream tint and blur are handled by the UIKit/AppKit views in BlurCard3DView.
+    @ViewBuilder
+    private func fiberOverlayForTier() -> some View {
+        switch tier {
+        case .noise:
+            Color.white
+                .colorEffect(Shader(
+                    function: ShaderLibrary.default.washi,
+                    arguments: noiseArgs
+                ))
+                .allowsHitTesting(false)
+
+        case .scattered:
+            Color.white
+                .colorEffect(Shader(
+                    function: ShaderLibrary.default.washiScattered,
+                    arguments: noiseArgs
+                ))
+                .allowsHitTesting(false)
+
+        case .simulated:
+            if let img = densityImage {
+                Image(decorative: img, scale: 1.0)
+                    .resizable()
+                    .interpolation(.high)
+                    .colorEffect(Shader(
+                        function: ShaderLibrary.default.washiSimulated,
+                        arguments: simulatedArgs
+                    ))
+                    .allowsHitTesting(false)
+            }
+
+        case .scanned:
+            if let img = scanDensityImage {
+                Image(decorative: img, scale: 1.0)
+                    .resizable()
+                    .interpolation(.high)
+                    .aspectRatio(contentMode: .fill)
+                    .colorEffect(Shader(
+                        function: ShaderLibrary.default.washiSimulated,
+                        arguments: simulatedArgs
+                    ))
+                    .allowsHitTesting(false)
             }
         }
     }
