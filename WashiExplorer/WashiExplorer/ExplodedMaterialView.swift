@@ -389,18 +389,42 @@ struct ExplodedMaterialView: View {
         rotX: Double, rotY: Double, fp: Double
     ) -> some View {
         if isResult {
-            // Single renderer from frame one — no swap, no crossfade.
-            // Perspective gates on morphComplete: flat during morph,
-            // foreshortened after.
-            BlurCard3DView(
-                blurStyle: cardValues.blurStyle,
-                creamOpacity: CGFloat(cardValues.creamTintOpacity),
-                fiberOverlay: AnyView(fiberOverlayForTier()),
-                rotX: rotX,
-                rotY: rotY,
-                perspective: morphComplete ? 0.3 * fp : 0,
-                cornerRadius: 12
-            )
+            let inFocusMode = isFocused && morphComplete
+
+            ZStack {
+                // SwiftUI path: exploded mode — matches other layers exactly.
+                // perspective: 0 (same as System Blur layer, avoids dark-material bug).
+                compositedView
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 12)
+                            .strokeBorder(.white.opacity(0.1), lineWidth: 0.5)
+                    }
+                    .rotation3DEffect(
+                        .degrees(rotX),
+                        axis: (x: 1, y: 0, z: 0),
+                        perspective: 0
+                    )
+                    .rotation3DEffect(
+                        .degrees(rotY),
+                        axis: (x: 0, y: 1, z: 0),
+                        perspective: 0
+                    )
+                    .opacity(inFocusMode ? 0 : 1)
+
+                // BlurCard3DView: focus mode — perspective + blur via CALayer.
+                // Always present at opacity 0 for pre-warming.
+                BlurCard3DView(
+                    blurStyle: cardValues.blurStyle,
+                    creamOpacity: CGFloat(cardValues.creamTintOpacity),
+                    fiberOverlay: AnyView(fiberOverlayForTier()),
+                    rotX: rotX,
+                    rotY: rotY,
+                    perspective: inFocusMode ? 0.3 * fp : 0,
+                    cornerRadius: 12
+                )
+                .opacity(inFocusMode ? 1 : 0)
+            }
         } else {
             // Non-composited layers: SwiftUI rotation (no blur concern).
             // System blur material goes black with perspective > 0
