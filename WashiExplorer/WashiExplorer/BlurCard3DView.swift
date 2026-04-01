@@ -22,27 +22,33 @@ final class BlurCard3DContainer: UIView {
     }
 
     func applyTransform() {
-        let w = bounds.width
-        let h = bounds.height
+        let w = bounds.width, h = bounds.height
         guard w > 0 && h > 0 else { return }
 
         let ap = layer.anchorPoint
-        let dx = (0.5 - ap.x) * w
-        let dy = (0.5 - ap.y) * h
+        let cx = (0.5 - ap.x) * w
+        let cy = (0.5 - ap.y) * h
 
-        var t = CATransform3DIdentity
-        t = CATransform3DTranslate(t, dx, dy, 0)
-        t = CATransform3DRotate(t, CGFloat(rotY) * .pi / 180.0, 0, 1, 0)
-        t = CATransform3DRotate(t, CGFloat(rotX) * .pi / 180.0, 1, 0, 0)
+        let toCenter = CATransform3DMakeTranslation(-cx, -cy, 0)
+        let ry = CATransform3DMakeRotation(CGFloat(rotY) * .pi / 180, 0, 1, 0)
+        let rx = CATransform3DMakeRotation(CGFloat(rotX) * .pi / 180, 1, 0, 0)
+        let fromCenter = CATransform3DMakeTranslation(cx, cy, 0)
 
+        var pc = CATransform3DIdentity
         let maxDim = max(w, h)
         if perspective > 0.001 && maxDim > 0 {
-            var persp = CATransform3DIdentity
-            persp.m34 = -CGFloat(perspective) / maxDim
-            t = CATransform3DConcat(t, persp)
+            let v = -CGFloat(perspective) / maxDim
+            pc.m34 = v
+            pc.m31 = cx * v   // shift vanishing point to center
+            pc.m32 = cy * v
         }
 
-        t = CATransform3DTranslate(t, -dx, -dy, 0)
+        // T(-c) * Ry * Rx * Pc * T(c)
+        var t = toCenter
+        t = CATransform3DConcat(t, ry)
+        t = CATransform3DConcat(t, rx)
+        t = CATransform3DConcat(t, pc)
+        t = CATransform3DConcat(t, fromCenter)
 
         CATransaction.begin()
         CATransaction.setDisableActions(true)
@@ -177,27 +183,33 @@ final class TransformView: NSView {
 
     func applyTransform() {
         guard let layer = self.layer else { return }
-        let w = bounds.width
-        let h = bounds.height
+        let w = bounds.width, h = bounds.height
         guard w > 0 && h > 0 else { return }
 
         let ap = layer.anchorPoint
-        let dx = (0.5 - ap.x) * w
-        let dy = (0.5 - ap.y) * h
+        let cx = (0.5 - ap.x) * w
+        let cy = (0.5 - ap.y) * h
 
-        var t = CATransform3DIdentity
-        t = CATransform3DTranslate(t, dx, dy, 0)
-        t = CATransform3DRotate(t, CGFloat(rotY) * .pi / 180.0, 0, 1, 0)
-        t = CATransform3DRotate(t, CGFloat(rotX) * .pi / 180.0, 1, 0, 0)
+        let toCenter = CATransform3DMakeTranslation(-cx, -cy, 0)
+        let ry = CATransform3DMakeRotation(CGFloat(rotY) * .pi / 180, 0, 1, 0)
+        let rx = CATransform3DMakeRotation(CGFloat(rotX) * .pi / 180, 1, 0, 0)
+        let fromCenter = CATransform3DMakeTranslation(cx, cy, 0)
 
+        var pc = CATransform3DIdentity
         let maxDim = max(w, h)
         if perspective > 0.001 && maxDim > 0 {
-            var persp = CATransform3DIdentity
-            persp.m34 = -CGFloat(perspective) / maxDim
-            t = CATransform3DConcat(t, persp)
+            let v = -CGFloat(perspective) / maxDim
+            pc.m34 = v
+            pc.m31 = cx * v   // shift vanishing point to center
+            pc.m32 = cy * v
         }
 
-        t = CATransform3DTranslate(t, -dx, -dy, 0)
+        // T(-c) * Ry * Rx * Pc * T(c)
+        var t = toCenter
+        t = CATransform3DConcat(t, ry)
+        t = CATransform3DConcat(t, rx)
+        t = CATransform3DConcat(t, pc)
+        t = CATransform3DConcat(t, fromCenter)
 
         CATransaction.begin()
         CATransaction.setDisableActions(true)
