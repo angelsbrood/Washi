@@ -22,13 +22,27 @@ final class BlurCard3DContainer: UIView {
     }
 
     func applyTransform() {
+        let w = bounds.width
+        let h = bounds.height
+        guard w > 0 && h > 0 else { return }
+
+        let ap = layer.anchorPoint
+        let dx = (0.5 - ap.x) * w
+        let dy = (0.5 - ap.y) * h
+
         var t = CATransform3DIdentity
-        let maxDim = max(bounds.width, bounds.height)
-        if perspective > 0.001 && maxDim > 0 {
-            t.m34 = -CGFloat(perspective) / maxDim
-        }
+        t = CATransform3DTranslate(t, -dx, -dy, 0)
         t = CATransform3DRotate(t, CGFloat(rotY) * .pi / 180.0, 0, 1, 0)
         t = CATransform3DRotate(t, CGFloat(rotX) * .pi / 180.0, 1, 0, 0)
+        t = CATransform3DTranslate(t, dx, dy, 0)
+
+        let maxDim = max(w, h)
+        if perspective > 0.001 && maxDim > 0 {
+            var persp = CATransform3DIdentity
+            persp.m34 = -CGFloat(perspective) / maxDim
+            t = CATransform3DConcat(t, persp)
+        }
+
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         layer.transform = t
@@ -150,10 +164,6 @@ final class TransformView: NSView {
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
-        // Layer-hosting: own the root layer so anchorPoint survives.
-        let rootLayer = CALayer()
-        rootLayer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
-        self.layer = rootLayer
         self.wantsLayer = true
     }
 
@@ -162,26 +172,32 @@ final class TransformView: NSView {
 
     override func layout() {
         super.layout()
-        guard let layer = self.layer else { return }
-
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        // Re-assert after every layout pass in case frame changes
-        layer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
-        layer.position = CGPoint(x: bounds.midX, y: bounds.midY)
         applyTransform()
-        CATransaction.commit()
     }
 
     func applyTransform() {
         guard let layer = self.layer else { return }
+        let w = bounds.width
+        let h = bounds.height
+        guard w > 0 && h > 0 else { return }
+
+        let ap = layer.anchorPoint
+        let dx = (0.5 - ap.x) * w
+        let dy = (0.5 - ap.y) * h
+
         var t = CATransform3DIdentity
-        let maxDim = max(bounds.width, bounds.height)
-        if perspective > 0.001 && maxDim > 0 {
-            t.m34 = -CGFloat(perspective) / maxDim
-        }
+        t = CATransform3DTranslate(t, -dx, -dy, 0)
         t = CATransform3DRotate(t, CGFloat(rotY) * .pi / 180.0, 0, 1, 0)
         t = CATransform3DRotate(t, CGFloat(rotX) * .pi / 180.0, 1, 0, 0)
+        t = CATransform3DTranslate(t, dx, dy, 0)
+
+        let maxDim = max(w, h)
+        if perspective > 0.001 && maxDim > 0 {
+            var persp = CATransform3DIdentity
+            persp.m34 = -CGFloat(perspective) / maxDim
+            t = CATransform3DConcat(t, persp)
+        }
+
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         layer.transform = t
