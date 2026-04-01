@@ -360,11 +360,14 @@ struct ExplodedMaterialView: View {
                 withAnimation(.spring(duration: 0.5, bounce: 0.12).delay(0.05)) {
                     zoom = singleCardZoom
                 }
-                // Detach from matchedGeometry after morph completes
+                // Enable perspective after morph completes
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                    morphComplete = true
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        morphComplete = true
+                    }
                 }
             } else {
+                morphComplete = true  // no morph in exploded entry
                 withAnimation(.spring(duration: 0.6, bounce: 0.2).delay(0.2)) {
                     isExploded = true
                 }
@@ -386,39 +389,18 @@ struct ExplodedMaterialView: View {
         rotX: Double, rotY: Double, fp: Double
     ) -> some View {
         if isResult {
-            // Both views always in tree. SwiftUI compositedView provides
-            // stable identity. BlurCard3DView handles 3D perspective
-            // (blur-safe CATransform3D). They swap at morphComplete.
-            ZStack {
-                compositedView
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 12)
-                            .strokeBorder(.white.opacity(0.1), lineWidth: 0.5)
-                    }
-                    .rotation3DEffect(
-                        .degrees(rotX),
-                        axis: (x: 1, y: 0, z: 0),
-                        perspective: 0
-                    )
-                    .rotation3DEffect(
-                        .degrees(rotY),
-                        axis: (x: 0, y: 1, z: 0),
-                        perspective: 0
-                    )
-                    .opacity(morphComplete ? 0 : 1)
-
-                BlurCard3DView(
-                    blurStyle: cardValues.blurStyle,
-                    creamOpacity: CGFloat(cardValues.creamTintOpacity),
-                    fiberOverlay: AnyView(fiberOverlayForTier()),
-                    rotX: rotX,
-                    rotY: rotY,
-                    perspective: morphComplete ? 0.3 * fp : 0,
-                    cornerRadius: 12
-                )
-                .opacity(morphComplete ? 1 : 0)
-            }
+            // Single renderer from frame one — no swap, no crossfade.
+            // Perspective gates on morphComplete: flat during morph,
+            // foreshortened after.
+            BlurCard3DView(
+                blurStyle: cardValues.blurStyle,
+                creamOpacity: CGFloat(cardValues.creamTintOpacity),
+                fiberOverlay: AnyView(fiberOverlayForTier()),
+                rotX: rotX,
+                rotY: rotY,
+                perspective: morphComplete ? 0.3 * fp : 0,
+                cornerRadius: 12
+            )
         } else {
             // Non-composited layers: SwiftUI rotation (no blur concern)
             layerView(for: layer)
