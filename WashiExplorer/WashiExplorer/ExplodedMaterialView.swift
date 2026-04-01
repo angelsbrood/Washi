@@ -39,6 +39,7 @@ struct ExplodedMaterialView: View {
     @State private var isFocused = false
     @State private var focusAmount: Double = 0
     @State private var morphComplete = false
+    @State private var perspectiveActive = false
 
     private let motionManager = WashiMotionManager.shared
 
@@ -199,6 +200,7 @@ struct ExplodedMaterialView: View {
                 .contentShape(Rectangle())
                 .onTapGesture {
                     morphComplete = false
+                    perspectiveActive = false
                     onDismiss()
                 }
 
@@ -315,9 +317,12 @@ struct ExplodedMaterialView: View {
                             // Cleared gate → enter single-card
                             isFocused = true
                             zoomBase = singleCardZoom
+                            dragOrbitBase = .zero  // reset drag base
                             withAnimation(.spring(duration: 0.4, bounce: 0.15)) {
                                 zoom = singleCardZoom
                                 focusAmount = 1.0
+                                perspectiveActive = true  // animate perspective in
+                                dragOrbitOffset = .zero  // smooth rotate to face-on
                             }
                         } else {
                             // Stay in multi-card, clamp to range
@@ -335,6 +340,7 @@ struct ExplodedMaterialView: View {
                             withAnimation(.spring(duration: 0.4, bounce: 0.15)) {
                                 zoom = multiZoomMax
                                 focusAmount = 0
+                                perspectiveActive = false  // remove perspective
                                 showLabels = true
                             }
                         } else {
@@ -354,20 +360,22 @@ struct ExplodedMaterialView: View {
                 isExploded = true
                 isFocused = true
                 focusAmount = 1.0
+                morphComplete = true  // immediate — use BlurCard3DView from the start
                 zoom = 1.0
                 zoomBase = singleCardZoom
                 // Animate zoom up after geometry morph settles
                 withAnimation(.spring(duration: 0.5, bounce: 0.12).delay(0.05)) {
                     zoom = singleCardZoom
                 }
-                // Enable perspective after morph completes
+                // Animate perspective in after morph completes
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
                     withAnimation(.easeInOut(duration: 0.3)) {
-                        morphComplete = true
+                        perspectiveActive = true
                     }
                 }
             } else {
                 morphComplete = true  // no morph in exploded entry
+                perspectiveActive = false  // no perspective in exploded mode
                 withAnimation(.spring(duration: 0.6, bounce: 0.2).delay(0.2)) {
                     isExploded = true
                 }
@@ -420,7 +428,7 @@ struct ExplodedMaterialView: View {
                     fiberOverlay: AnyView(fiberOverlayForTier()),
                     rotX: rotX,
                     rotY: rotY,
-                    perspective: inFocusMode ? 0.3 * fp : 0,
+                    perspective: perspectiveActive ? 0.3 * fp : 0,
                     cornerRadius: 12
                 )
                 .opacity(inFocusMode ? 1 : 0)
