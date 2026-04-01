@@ -35,6 +35,7 @@ enum FiberSimulator {
         var kumo: Float
         var kumoScale: Float
         var seed: UInt64
+        var textureScale: Float
 
         init(
             fiberLength: Float,
@@ -43,7 +44,8 @@ enum FiberSimulator {
             formationAlignment: Float,
             kumo: Float,
             kumoScale: Float,
-            seed: Float
+            seed: Float,
+            textureScale: Float = 1.0
         ) {
             self.fiberLength = fiberLength
             self.fiberFineness = fiberFineness
@@ -52,7 +54,19 @@ enum FiberSimulator {
             self.kumo = kumo
             self.kumoScale = kumoScale
             self.seed = UInt64(seed)
+            self.textureScale = textureScale
         }
+    }
+
+    // MARK: - Formation Pass
+
+    private struct FormationPass {
+        let fraction: Float
+        let baseAngle: Float
+        let spreadMul: Float
+        let flowAngle: Float
+        let flowBias: Float
+        let flowOscillations: Int
     }
 
     // MARK: - Generation
@@ -63,40 +77,90 @@ enum FiberSimulator {
         var dirYBuffer = [Float](repeating: 0.0, count: size * size)
         var rng = SeededRNG(seed: params.seed)
 
-        let fiberHalfLength = Float(size) * lerp(0.006, 0.025, params.fiberLength)
-        let fiberWidth = Float(size) * lerp(0.0005, 0.0015, 1.0 - params.fiberFineness)
+        // Scale fiber dimensions and count by textureScale
+        let ts = max(params.textureScale, 0.1)
+        let fiberHalfLength = Float(size) * lerp(0.006, 0.025, params.fiberLength) / ts
+        let fiberWidth = Float(size) * lerp(0.0005, 0.0015, 1.0 - params.fiberFineness) / ts
         let angularSpread = lerp(0.3, .pi, params.formationAlignment)
+        let scaledFiberCount = Int(Float(params.fiberCount) * ts * ts)
+
+        // Pre-compute meso-flocculation field
+        let mesoField = generateMesoField(size: size, seed: params.seed)
 
         // Nagashizuki formation passes
-        let passes: [(fraction: Float, baseAngle: Float, spreadMul: Float)] = [
-            (0.40, 0.15, 1.0),          // kakemizu
-            (0.40, 0.15 + 1.2, 1.0),    // choshi
-            (0.20, 0.15, 0.3),           // sutemizu (tight alignment)
+        let passes: [FormationPass] = [
+            // Kakemizu: quick initial pour, strong gradient toward pour edge
+            FormationPass(fraction: 0.40, baseAngle: 0.15, spreadMul: 1.0,
+                          flowAngle: 0.15, flowBias: 0.3, flowOscillations: 0),
+            // Choshi: back-and-forth main formation, mild oscillation banding
+            FormationPass(fraction: 0.40, baseAngle: 0.15 + 1.2, spreadMul: 1.0,
+                          flowAngle: 0.15 + 1.2, flowBias: 0.15, flowOscillations: 3),
+            // Sutemizu: quick final pour, tight alignment, mild gradient
+            FormationPass(fraction: 0.20, baseAngle: 0.15, spreadMul: 0.3,
+                          flowAngle: 0.15, flowBias: 0.2, flowOscillations: 0),
         ]
 
+        // Compensation for meso rejection (~40%) and micro-floc expansion (~1.3×)
+        let compensationFactor: Float = 1.28
+
         for pass in passes {
-            let count = Int(Float(params.fiberCount) * pass.fraction)
+            let count = Int(Float(scaledFiberCount) * pass.fraction * compensationFactor)
+            let flowCos = cos(pass.flowAngle)
+            let flowSin = sin(pass.flowAngle)
 
             for _ in 0..<count {
-                let ox = rng.nextFloat() * Float(size)
-                let oy = rng.nextFloat() * Float(size)
+                // Flow-biased placement
+                let rawAlong = rng.nextFloat()
+                let along = pass.flowBias < 0.001
+                    ? rawAlong
+                    : pow(rawAlong, 1.0 + pass.flowBias * 2.0)
+                let across = rng.nextFloat()
+
+                let rawX = (flowCos * along - flowSin * across) * Float(size)
+                let rawY = (flowSin * along + flowCos * across) * Float(size)
+                let ox = ((rawX.truncatingRemainder(dividingBy: Float(size))) + Float(size))
+                    .truncatingRemainder(dividingBy: Float(size))
+                let oy = ((rawY.truncatingRemainder(dividingBy: Float(size))) + Float(size))
+                    .truncatingRemainder(dividingBy: Float(size))
+
+                // Choshi oscillation: sinusoidal density variation from back-and-forth
+                if pass.flowOscillations > 0 {
+                    let oscillation = sin(along * Float(pass.flowOscillations) * .pi)
+                    let threshold = 0.5 + oscillation * 0.15
+                    if rng.nextFloat() > threshold { continue }
+                }
+
+                // Meso-flocculation: accept/reject based on noise field
+                let mesoIdx = min(Int(oy) * size + Int(ox), mesoField.count - 1)
+                let mesoValue = mesoField[max(mesoIdx, 0)]
+                let mesoThreshold = 0.35 + mesoValue * 0.50
+                if rng.nextFloat() > mesoThreshold { continue }
 
                 let angle = pass.baseAngle
                     + (rng.nextFloat() - 0.5) * angularSpread * pass.spreadMul
-
                 let curvature = (rng.nextFloat() - 0.5) * 0.3
 
-                drawFiber(
-                    buffer: &buffer,
-                    dirXBuffer: &dirXBuffer,
-                    dirYBuffer: &dirYBuffer,
-                    size: size,
-                    ox: ox, oy: oy,
-                    angle: angle,
-                    halfLength: fiberHalfLength,
-                    width: fiberWidth,
-                    curvature: curvature
-                )
+                // Micro-flocculation: occasional fiber clusters
+                let isCluster = rng.nextFloat() < 0.15
+                let clusterCount = isCluster ? Int(2 + rng.nextFloat() * 2) : 1
+
+                for c in 0..<clusterCount {
+                    let cOx = c == 0 ? ox : ox + (rng.nextFloat() - 0.5) * fiberWidth * 4
+                    let cOy = c == 0 ? oy : oy + (rng.nextFloat() - 0.5) * fiberWidth * 4
+                    let cAngle = c == 0 ? angle : angle + (rng.nextFloat() - 0.5) * 0.1
+
+                    drawFiber(
+                        buffer: &buffer,
+                        dirXBuffer: &dirXBuffer,
+                        dirYBuffer: &dirYBuffer,
+                        size: size,
+                        ox: cOx, oy: cOy,
+                        angle: cAngle,
+                        halfLength: fiberHalfLength,
+                        width: fiberWidth,
+                        curvature: curvature
+                    )
+                }
             }
         }
 
@@ -210,6 +274,51 @@ enum FiberSimulator {
         }
     }
 
+    // MARK: - Meso-flocculation field
+
+    /// Grid-based value noise with smoothstep interpolation.
+    /// Produces tileable density variation at intermediate scale (~128px blobs at 1024px).
+    nonisolated private static func generateMesoField(size: Int, seed: UInt64) -> [Float] {
+        let gridSize = 8
+        let cellSize = Float(size) / Float(gridSize)
+        var gridRng = SeededRNG(seed: seed &+ 0xDEAD_BEEF)
+
+        let stride = gridSize + 1
+        var grid = [Float](repeating: 0, count: stride * stride)
+        for i in 0..<grid.count {
+            grid[i] = gridRng.nextFloat()
+        }
+        // Make tileable: wrap edges
+        for i in 0...gridSize {
+            grid[i * stride + gridSize] = grid[i * stride]
+            grid[gridSize * stride + i] = grid[i]
+        }
+
+        var field = [Float](repeating: 0.5, count: size * size)
+        for y in 0..<size {
+            let fy = Float(y) / cellSize
+            let gy = Int(fy)
+            let ty = fy - Float(gy)
+            let sy = ty * ty * (3 - 2 * ty)  // smoothstep
+            for x in 0..<size {
+                let fx = Float(x) / cellSize
+                let gx = Int(fx)
+                let tx = fx - Float(gx)
+                let sx = tx * tx * (3 - 2 * tx)
+
+                let v00 = grid[gy * stride + gx]
+                let v10 = grid[gy * stride + gx + 1]
+                let v01 = grid[(gy + 1) * stride + gx]
+                let v11 = grid[(gy + 1) * stride + gx + 1]
+
+                let top = v00 + (v10 - v00) * sx
+                let bot = v01 + (v11 - v01) * sx
+                field[y * size + x] = top + (bot - top) * sy
+            }
+        }
+        return field
+    }
+
     // MARK: - Buffer to CGImage
 
     nonisolated private static func bufferToCGImage(
@@ -245,7 +354,7 @@ enum FiberSimulator {
 
     nonisolated private static var cacheDirectory: URL {
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
-        return caches.appendingPathComponent("WashiDensity-v3", isDirectory: true)
+        return caches.appendingPathComponent("WashiDensity-v4", isDirectory: true)
     }
 
     nonisolated static func loadCached(presetID: String) -> CGImage? {

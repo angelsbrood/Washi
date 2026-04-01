@@ -102,6 +102,7 @@ struct WashiPreset: Identifiable, Equatable, Codable {
     let kumoScale: Float
     let surface: Float
     let warmth: Float
+    var textureScale: Float = 1.0
     var isBuiltin: Bool = true
 }
 
@@ -176,6 +177,7 @@ struct CardValues {
     let kumoScale: Float
     let surface: Float
     let warmth: Float
+    let textureScale: Float
     let creamTintOpacity: Double
     let systemMaterial: AnyShapeStyle
     #if os(iOS)
@@ -202,6 +204,7 @@ struct ContentView: View {
     @State private var kumoScale: Float = WashiPreset.kozo.kumoScale
     @State private var surface: Float = WashiPreset.kozo.surface
     @State private var warmth: Float = WashiPreset.kozo.warmth
+    @State private var textureScale: Float = WashiPreset.kozo.textureScale
 
     // Cream tint (default = production standard-light warmTintOpacity)
     @State private var creamOpacity: Float = 0.10
@@ -274,6 +277,7 @@ struct ContentView: View {
         var formationAlignment: Float
         var kumo: Float
         var kumoScale: Float
+        var textureScale: Float
     }
 
     private var densityParams: DensityParams {
@@ -283,7 +287,8 @@ struct ContentView: View {
             formationLayers: formationLayers,
             formationAlignment: formationAlignment,
             kumo: kumo,
-            kumoScale: kumoScale
+            kumoScale: kumoScale,
+            textureScale: textureScale
         )
     }
 
@@ -325,6 +330,7 @@ struct ContentView: View {
             kumoScale: clamp01(kumoScale + weight.kumoScaleOffset),
             surface: clamp01(surface * weight.surfaceRatio),
             warmth: warmth,
+            textureScale: textureScale,
             creamTintOpacity: Double(creamOpacity) * weight.creamRatio
                 * (previewScheme == .dark ? 0.5 : 1.0),
             systemMaterial: weight.systemMaterial,
@@ -974,6 +980,18 @@ struct ContentView: View {
                 sliderSection("Surface") {
                     paramSlider("Texture", value: $surface)
                 }
+                sliderSection("Scale") {
+                    HStack(spacing: 8) {
+                        Text("Texture")
+                            .font(.caption)
+                            .frame(width: 70, alignment: .leading)
+                        Slider(value: $textureScale, in: 0.5...3.0)
+                        Text(String(format: "%.1f", textureScale))
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                            .frame(width: 36, alignment: .trailing)
+                    }
+                }
                 sliderSection("Material") {
                     HStack(spacing: 8) {
                         Text("Cream")
@@ -1205,6 +1223,7 @@ struct ContentView: View {
         kumoScale = preset.kumoScale
         surface = preset.surface
         warmth = preset.warmth
+        textureScale = preset.textureScale
 
         for weight in ExplorerWeight.allCases {
             let key = "\(preset.id)-\(weight.rawValue)"
@@ -1230,6 +1249,7 @@ struct ContentView: View {
                 && preset.formationAlignment == formationAlignment
                 && preset.kumo == kumo
                 && preset.kumoScale == kumoScale
+                && preset.textureScale == textureScale
             {
                 let thinKey = "\(preset.id)-\(ExplorerWeight.thin.rawValue)"
                 let stdKey = "\(preset.id)-\(ExplorerWeight.standard.rawValue)"
@@ -1269,6 +1289,7 @@ struct ContentView: View {
             kumoScale: kumoScale,
             surface: surface,
             warmth: warmth,
+            textureScale: textureScale,
             isBuiltin: false
         )
         customPresets.append(preset)
@@ -1287,6 +1308,7 @@ struct ContentView: View {
         && kumoScale == preset.kumoScale
         && surface == preset.surface
         && warmth == preset.warmth
+        && textureScale == preset.textureScale
     }
 
     // MARK: - Simulation Params
@@ -1304,7 +1326,8 @@ struct ContentView: View {
             formationAlignment: clamp01(formationAlignment + weight.formationAlignmentOffset),
             kumo: clamp01(kumo + weight.kumoOffset),
             kumoScale: clamp01(kumoScale + weight.kumoScaleOffset),
-            seed: seed
+            seed: seed,
+            textureScale: textureScale
         )
     }
 
@@ -1325,7 +1348,8 @@ struct ContentView: View {
             formationAlignment: clamp01(preset.formationAlignment + weight.formationAlignmentOffset),
             kumo: clamp01(preset.kumo + weight.kumoOffset),
             kumoScale: clamp01(preset.kumoScale + weight.kumoScaleOffset),
-            seed: seed
+            seed: seed,
+            textureScale: preset.textureScale
         )
     }
 

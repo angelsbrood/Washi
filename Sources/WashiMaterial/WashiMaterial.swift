@@ -66,6 +66,12 @@ extension WashiWeight {
         }
     }
 
+    /// Derive texture scale from surface width.
+    /// Reference: 360pt surface = scale 1.0. Larger surfaces show more paper area.
+    public func textureScale(for surfaceWidth: CGFloat) -> Float {
+        Float(surfaceWidth / 360.0)
+    }
+
     /// Shader parameters — control the modulation overlay, not the simulation.
 
     var fiberVisibility: Float {
@@ -113,19 +119,27 @@ public struct WashiMaterialModifier: ViewModifier {
 
     @Environment(\.colorScheme) private var colorScheme
     @State private var fiberImage: CGImage?
+    @State private var surfaceWidth: CGFloat = 360
 
     private var motionManager: WashiMotionManager { .shared }
+
+    /// Quantized texture scale (to 0.1) to avoid excessive cache entries.
+    private var quantizedTextureScale: Float {
+        let raw = weight.textureScale(for: surfaceWidth)
+        return (raw * 10).rounded() / 10
+    }
 
     public func body(content: Content) -> some View {
         content
             .background {
-                Rectangle()
-                    .fill(weight.systemMaterial)
+                GeometryReader { geo in
+                    Rectangle()
+                        .fill(weight.systemMaterial)
+                        .onAppear { surfaceWidth = geo.size.width }
+                        .onChange(of: geo.size.width) { _, w in surfaceWidth = w }
+                }
             }
             .overlay {
-                // Kozo paper ground — the natural warmth of the fiber material.
-                // Light mode: gives fiber overlay tonal contrast to read against.
-                // Dark mode: shifts highlights from clinical white to warm white.
                 Color(red: 0.94, green: 0.92, blue: 0.89)
                     .opacity(weight.warmTintOpacity(for: colorScheme))
                     .allowsHitTesting(false)
@@ -155,7 +169,8 @@ public struct WashiMaterialModifier: ViewModifier {
                 fiberImage = await WashiTextureCache.shared.texture(
                     for: cacheKey,
                     weight: weight,
-                    identity: identity
+                    identity: identity,
+                    textureScale: quantizedTextureScale
                 )
             }
             .onAppear { motionManager.start() }
@@ -163,7 +178,7 @@ public struct WashiMaterialModifier: ViewModifier {
     }
 
     private var cacheKey: String {
-        "\(weight)-\(identity ?? "default")"
+        "\(weight)-\(identity ?? "default")-ts\(quantizedTextureScale)"
     }
 
     private var tiltShadowBias: Float {

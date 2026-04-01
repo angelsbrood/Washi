@@ -17,7 +17,8 @@ public actor WashiTextureCache {
     public func texture(
         for key: String,
         weight: WashiWeight,
-        identity: String?
+        identity: String?,
+        textureScale: Float = 1.0
     ) -> CGImage {
         // 1. Check memory cache
         if let cached = memoryCache.object(forKey: key as NSString) {
@@ -33,6 +34,7 @@ public actor WashiTextureCache {
         // 3. Generate
         var params = weight.simulationParams
         params.seed = Self.stableHash("\(identity ?? "default")-\(weight)")
+        params.textureScale = textureScale
 
         let image = FiberSimulator.generate(params: params, size: textureSize)
 
@@ -71,7 +73,7 @@ public actor WashiTextureCache {
 
     private func diskCacheURL(for key: String) -> URL {
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-        let dir = caches.appendingPathComponent("WashiTextures-v3", isDirectory: true)
+        let dir = caches.appendingPathComponent("WashiTextures-v4", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let safe = key.replacingOccurrences(of: "/", with: "_")
                       .replacingOccurrences(of: ":", with: "_")
