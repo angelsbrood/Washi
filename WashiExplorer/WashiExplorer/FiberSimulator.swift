@@ -369,6 +369,7 @@ enum FiberSimulator {
                 buffer[y * size + x] *= modFactor
             }
         }
+
     }
 
     // MARK: - Simplex noise (2D) — Gustavson, ported from Washi.metal
@@ -512,7 +513,7 @@ enum FiberSimulator {
 
     nonisolated private static var cacheDirectory: URL {
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
-        return caches.appendingPathComponent("WashiDensity-v15", isDirectory: true)
+        return caches.appendingPathComponent("WashiDensity-v16", isDirectory: true)
     }
 
     nonisolated static func loadCached(presetID: String) -> CGImage? {

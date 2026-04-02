@@ -125,7 +125,7 @@ extension WashiPreset {
         id: "kozo", name: "Kozo",
         fiberLength: 0.60, fiberFineness: 0.55, fiberVisibility: 0.50,
         formationLayers: 0.4118, formationAlignment: 0.28,
-        kumo: 0.40, kumoScale: 0.40, surface: 0.12, warmth: 0.0
+        kumo: 0.40, kumoScale: 0.60, surface: 0.12, warmth: 0.0
     )
     static let gampi = WashiPreset(
         id: "gampi", name: "Gampi",
