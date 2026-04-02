@@ -232,6 +232,7 @@ struct ContentView: View {
     @State private var editingPresetID: String?
     @FocusState private var editingFieldFocused: Bool
     @State private var backgroundMode: BackgroundMode = .gradient
+    @State private var previousBackgroundMode: BackgroundMode = .gradient
     @State private var showDebug = false
     @State private var previewScheme: ColorScheme = .dark
     @State private var didApplySystemScheme = false
@@ -393,8 +394,6 @@ struct ContentView: View {
             } detail: {
                 previewPanel
                     .environment(\.colorScheme, previewScheme)
-                    .id(previewScheme)
-                    .transition(.opacity)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             #else
@@ -402,8 +401,6 @@ struct ContentView: View {
                 VStack(spacing: 0) {
                     previewPanel
                         .environment(\.colorScheme, previewScheme)
-                        .id(previewScheme)
-                        .transition(.opacity)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                     controlsPanel
                 }
@@ -457,10 +454,7 @@ struct ContentView: View {
                         Label("Sumi", systemImage: "paintbrush.pointed")
                     }
                     Button {
-                        backgroundImage = nil
-                        withAnimation(.easeInOut(duration: 0.3)) {
-                            backgroundMode = .custom
-                        }
+                        previousBackgroundMode = backgroundMode
                         triggerBackgroundPicker()
                     } label: {
                         Label("Photo", systemImage: "photo")
@@ -604,6 +598,7 @@ struct ContentView: View {
                 explodedOverlay(tier: expanded.tier, weight: expanded.weight)
                     .id(expandedGeneration)
             }
+
         }
         .onAppear {
             motionManager.start()
@@ -651,7 +646,8 @@ struct ContentView: View {
             ForEach(ExplorerWeight.allCases) { weight in
                 Text(weight.rawValue)
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.7))
+                    .foregroundStyle(backgroundMode == .light ? AnyShapeStyle(.secondary) : AnyShapeStyle(.white.opacity(0.7)))
+                    .environment(\.colorScheme, backgroundMode == .light ? .light : previewScheme)
                     .frame(maxWidth: .infinity)
             }
         }
@@ -662,7 +658,8 @@ struct ContentView: View {
         HStack(alignment: .center, spacing: 8) {
             Text(tier.rawValue)
                 .font(.caption2)
-                .foregroundStyle(.white.opacity(0.6))
+                .foregroundStyle(backgroundMode == .light ? AnyShapeStyle(.secondary) : AnyShapeStyle(.white.opacity(0.6)))
+                .environment(\.colorScheme, backgroundMode == .light ? .light : previewScheme)
                 .frame(width: 56, alignment: .center)
 
             if tier == .scanned && scanDensityImage == nil {
@@ -1546,6 +1543,9 @@ struct ContentView: View {
             showingScanCrop = true
         case .background:
             backgroundImage = cgImage
+            withAnimation(.easeInOut(duration: 0.3)) {
+                backgroundMode = .custom
+            }
         }
     }
     #endif
@@ -1560,6 +1560,9 @@ struct ContentView: View {
     private func loadBackgroundFromURL(_ url: URL) {
         guard let decoded = loadImageFromURL(url) else { return }
         backgroundImage = decoded
+        withAnimation(.easeInOut(duration: 0.3)) {
+            backgroundMode = .custom
+        }
     }
 
     private func loadImageFromURL(_ url: URL) -> CGImage? {
