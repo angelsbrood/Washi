@@ -347,19 +347,22 @@ public enum FiberSimulator {
         scale: Float,
         seed: UInt64
     ) {
+        guard intensity > 0.001 else { return }
         let freq = lerp(2.0, 8.0, scale)
-        let seedF = Float(seed)
+        var rng = SeededRNG(seed: seed &+ 0xBADA_CAFE)
+        let ox = rng.nextFloat() * 1000.0
+        let oy = rng.nextFloat() * 1000.0
 
+        let invSize = 1.0 / Float(size)
         for y in 0..<size {
-            let v = Float(y) / Float(size)
+            let v = Float(y) * invSize
             for x in 0..<size {
-                let u = Float(x) / Float(size)
+                let u = Float(x) * invSize
 
-                let n = sin(u * freq + seedF * 0.1)
-                    * cos(v * (freq * 0.875) + seedF * 0.07)
-                    * sin((u + v) * (freq * 0.625) + seedF * 0.13)
+                var n = snoise(u * freq + ox, v * freq + oy) * 0.7
+                n += snoise(u * freq * 2.0 + ox + 50, v * freq * 2.0 + oy + 50) * 0.3
 
-                let modFactor = 1.0 + n * intensity * 0.3
+                let modFactor = 1.0 + n * intensity
                 buffer[y * size + x] *= modFactor
             }
         }
