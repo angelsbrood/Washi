@@ -318,10 +318,10 @@ struct ExplodedMaterialView: View {
                     if !isFocused {
                         if raw > gateRawThreshold {
                             // Cleared gate → enter single-card
-                            isFocused = true
                             zoomBase = singleCardZoom
                             dragOrbitBase = .zero  // reset drag base
                             withAnimation(.spring(duration: 0.4, bounce: 0.15)) {
+                                isFocused = true
                                 zoom = singleCardZoom
                                 focusAmount = 1.0
                                 perspectiveActive = true  // animate perspective in

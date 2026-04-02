@@ -515,7 +515,7 @@ enum FiberSimulator {
 
     nonisolated private static var cacheDirectory: URL {
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
-        return caches.appendingPathComponent("WashiDensity-v20", isDirectory: true)
+        return caches.appendingPathComponent("WashiDensity-v22", isDirectory: true)
     }
 
     nonisolated static func loadCached(presetID: String) -> CGImage? {

@@ -392,16 +392,30 @@ struct ContentView: View {
                 controlsPanel
                     .navigationSplitViewColumnWidth(min: 240, ideal: 280, max: 340)
             } detail: {
-                previewPanel
-                    .environment(\.colorScheme, previewScheme)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                ZStack {
+                    previewPanel
+                        .environment(\.colorScheme, .light)
+                        .opacity(previewScheme == .light ? 1 : 0)
+                    previewPanel
+                        .environment(\.colorScheme, .dark)
+                        .opacity(previewScheme == .dark ? 1 : 0)
+                }
+                .animation(.easeInOut(duration: 0.3), value: previewScheme)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             #else
             NavigationStack {
                 VStack(spacing: 0) {
-                    previewPanel
-                        .environment(\.colorScheme, previewScheme)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    ZStack {
+                        previewPanel
+                            .environment(\.colorScheme, .light)
+                            .opacity(previewScheme == .light ? 1 : 0)
+                        previewPanel
+                            .environment(\.colorScheme, .dark)
+                            .opacity(previewScheme == .dark ? 1 : 0)
+                    }
+                    .animation(.easeInOut(duration: 0.3), value: previewScheme)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                     controlsPanel
                 }
                 .ignoresSafeArea(edges: .top)

@@ -656,10 +656,10 @@ float sparseProminentFiber(
     half3 c3 = half3(0.94h, 0.85h, 0.66h);     // golden
     half3 c4 = half3(0.98h, 0.94h, 0.86h);     // parchment
 
-    half3 rgb = mix(c0, c1, saturate(d * 4.0h));
-    rgb = mix(rgb, c2, saturate((d - 0.25h) * 4.0h));
-    rgb = mix(rgb, c3, saturate((d - 0.5h) * 4.0h));
-    rgb = mix(rgb, c4, saturate((d - 0.75h) * 4.0h));
+    half3 rgb = mix(c0, c1, saturate(d * 5.0h));
+    rgb = mix(rgb, c2, saturate((d - 0.20h) * 4.0h));
+    rgb = mix(rgb, c3, saturate((d - 0.45h) * 4.0h));
+    rgb = mix(rgb, c4, saturate((d - 0.70h) * 3.333h));
 
     return half4(rgb, 1.0h);
 }
