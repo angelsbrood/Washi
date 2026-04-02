@@ -365,59 +365,105 @@ public enum FiberSimulator {
         }
     }
 
+    // MARK: - Simplex noise (2D) — Gustavson, ported from Washi.metal
+
+    private static func mod289(_ x: Float) -> Float {
+        x - floor(x * (1.0 / 289.0)) * 289.0
+    }
+
+    private static func permute(_ x: Float) -> Float {
+        mod289((x * 34.0 + 1.0) * x)
+    }
+
+    private static func permute(_ x: (Float, Float, Float)) -> (Float, Float, Float) {
+        (permute(x.0), permute(x.1), permute(x.2))
+    }
+
+    private static func snoise(_ vx: Float, _ vy: Float) -> Float {
+        let Cx: Float = 0.211324865405187   // (3.0 - sqrt(3.0)) / 6.0
+        let Cy: Float = 0.366025403784439   // 0.5 * (sqrt(3.0) - 1.0)
+        let Cz: Float = -0.577350269189626  // -1.0 + 2.0 * Cx
+        let Cw: Float = 0.024390243902439   // 1.0 / 41.0
+
+        let s = (vx + vy) * Cy
+        let ix = floor(vx + s)
+        let iy = floor(vy + s)
+
+        let t = (ix + iy) * Cx
+        let x0x = vx - ix + t
+        let x0y = vy - iy + t
+
+        let i1x: Float = x0x > x0y ? 1.0 : 0.0
+        let i1y: Float = x0x > x0y ? 0.0 : 1.0
+
+        let x1x = x0x - i1x + Cx
+        let x1y = x0y - i1y + Cx
+        let x2x = x0x + Cz
+        let x2y = x0y + Cz
+
+        let jx = mod289(ix)
+        let jy = mod289(iy)
+        let pInner = permute((jy, jy + i1y, jy + 1.0))
+        let p = permute((pInner.0 + jx, pInner.1 + jx + i1x, pInner.2 + jx + 1.0))
+
+        var m0 = max(0.5 - (x0x * x0x + x0y * x0y), 0.0)
+        var m1 = max(0.5 - (x1x * x1x + x1y * x1y), 0.0)
+        var m2 = max(0.5 - (x2x * x2x + x2y * x2y), 0.0)
+        m0 *= m0; m0 *= m0
+        m1 *= m1; m1 *= m1
+        m2 *= m2; m2 *= m2
+
+        let gx0 = 2.0 * (p.0 * Cw - floor(p.0 * Cw)) - 1.0
+        let gx1 = 2.0 * (p.1 * Cw - floor(p.1 * Cw)) - 1.0
+        let gx2 = 2.0 * (p.2 * Cw - floor(p.2 * Cw)) - 1.0
+        let h0 = abs(gx0) - 0.5
+        let h1 = abs(gx1) - 0.5
+        let h2 = abs(gx2) - 0.5
+        let a0 = gx0 - floor(gx0 + 0.5)
+        let a1 = gx1 - floor(gx1 + 0.5)
+        let a2 = gx2 - floor(gx2 + 0.5)
+
+        m0 *= 1.79284291400159 - 0.85373472095314 * (a0 * a0 + h0 * h0)
+        m1 *= 1.79284291400159 - 0.85373472095314 * (a1 * a1 + h1 * h1)
+        m2 *= 1.79284291400159 - 0.85373472095314 * (a2 * a2 + h2 * h2)
+
+        let g0 = a0 * x0x + h0 * x0y
+        let g1 = a1 * x1x + h1 * x1y
+        let g2 = a2 * x2x + h2 * x2y
+
+        return 130.0 * (m0 * g0 + m1 * g1 + m2 * g2)
+    }
+
     // MARK: - Meso-flocculation field
 
-    /// Multi-octave value noise with smoothstep interpolation.
-    /// Three octaves at grid sizes 8, 16, 32 break up single-frequency grid artifacts
-    /// while preserving tileable density variation at meso scale.
+    /// Multi-octave simplex noise for meso-scale density variation.
+    /// Three octaves at frequencies 8, 16, 32 produce organic, isotropic
+    /// variation without the axis-aligned grid artifacts of value noise.
     private static func generateMesoField(size: Int, seed: UInt64) -> [Float] {
-        let octaves: [(gridSize: Int, amplitude: Float, seedOffset: UInt64)] = [
+        let octaves: [(frequency: Float, amplitude: Float, seedOffset: UInt64)] = [
             (8,  1.0,  0xDEAD_BEEF),
             (16, 0.5,  0xCAFE_BABE),
             (32, 0.25, 0xFACE_FEED),
         ]
         let totalAmplitude = octaves.reduce(Float(0)) { $0 + $1.amplitude }
 
-        // Build tileable grids for each octave
-        var grids: [(grid: [Float], stride: Int, cellSize: Float)] = []
+        var offsets: [(Float, Float)] = []
         for octave in octaves {
-            let stride = octave.gridSize + 1
             var rng = SeededRNG(seed: seed &+ octave.seedOffset)
-            var grid = [Float](repeating: 0, count: stride * stride)
-            for i in 0..<grid.count {
-                grid[i] = rng.nextFloat()
-            }
-            // Make tileable: wrap edges
-            for i in 0...octave.gridSize {
-                grid[i * stride + octave.gridSize] = grid[i * stride]
-                grid[octave.gridSize * stride + i] = grid[i]
-            }
-            grids.append((grid, stride, Float(size) / Float(octave.gridSize)))
+            offsets.append((rng.nextFloat() * 1000.0, rng.nextFloat() * 1000.0))
         }
 
+        let invSize = 1.0 / Float(size)
         var field = [Float](repeating: 0, count: size * size)
         for y in 0..<size {
+            let v = Float(y) * invSize
             for x in 0..<size {
+                let u = Float(x) * invSize
                 var value: Float = 0
                 for (i, octave) in octaves.enumerated() {
-                    let (grid, stride, cellSize) = grids[i]
-                    let fx = Float(x) / cellSize
-                    let fy = Float(y) / cellSize
-                    let gx = Int(fx)
-                    let gy = Int(fy)
-                    let tx = fx - Float(gx)
-                    let ty = fy - Float(gy)
-                    let sx = tx * tx * (3 - 2 * tx)
-                    let sy = ty * ty * (3 - 2 * ty)
-
-                    let v00 = grid[gy * stride + gx]
-                    let v10 = grid[gy * stride + gx + 1]
-                    let v01 = grid[(gy + 1) * stride + gx]
-                    let v11 = grid[(gy + 1) * stride + gx + 1]
-
-                    let top = v00 + (v10 - v00) * sx
-                    let bot = v01 + (v11 - v01) * sx
-                    value += (top + (bot - top) * sy) * octave.amplitude
+                    let (ox, oy) = offsets[i]
+                    let n = snoise(u * octave.frequency + ox, v * octave.frequency + oy)
+                    value += (n + 1.0) * 0.5 * octave.amplitude
                 }
                 field[y * size + x] = value / totalAmplitude
             }
