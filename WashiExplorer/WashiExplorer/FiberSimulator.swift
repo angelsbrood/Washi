@@ -36,6 +36,7 @@ enum FiberSimulator {
         var kumoScale: Float
         var seed: UInt64
         var textureScale: Float
+        var choshiScoops: Int
 
         init(
             fiberLength: Float,
@@ -55,6 +56,7 @@ enum FiberSimulator {
             self.kumoScale = kumoScale
             self.seed = UInt64(seed)
             self.textureScale = textureScale
+            self.choshiScoops = 3 + Int(formationLayers * 5)
         }
     }
 
@@ -79,8 +81,8 @@ enum FiberSimulator {
 
         // Scale fiber dimensions and count by textureScale
         let ts = max(params.textureScale, 0.1)
-        let fiberHalfLength = Float(size) * lerp(0.006, 0.025, params.fiberLength) / ts
-        let fiberWidth = Float(size) * lerp(0.0005, 0.0015, 1.0 - params.fiberFineness) / ts
+        let fiberHalfLength = Float(size) * lerp(0.004, 0.018, params.fiberLength) / ts
+        let fiberWidth = Float(size) * lerp(0.0004, 0.0012, 1.0 - params.fiberFineness) / ts
         let angularSpread = lerp(0.3, .pi, params.formationAlignment)
         let scaledFiberCount = Int(Float(params.fiberCount) * ts * ts)
 
@@ -99,7 +101,7 @@ enum FiberSimulator {
             for x in 0..<size {
                 let idx = y * size + x
                 let mesoValue = mesoField[idx]
-                let density = matBaseDensity * (0.7 + mesoValue * 0.6)
+                let density = matBaseDensity * (0.3 + mesoValue * 1.4)
                 buffer[idx] = density
                 // Smooth random orientation, weighted lightly so prominent
                 // fibers dominate where they exist
@@ -110,22 +112,64 @@ enum FiberSimulator {
             }
         }
 
+        // --- Stage 1b: Mat fibrils (granular texture) ---
+        // Tiny deposited fibers create the fine-grained variation visible in real
+        // washi. Without these, the smooth mat floor looks blobby and synthetic.
+        let matFibrilHalfLength = fiberHalfLength * 0.20
+        let matFibrilWidth = max(fiberWidth * 0.5, 0.3)
+        let matFibrilCount = Int(Float(scaledFiberCount) * 50.0)
+        var matRng = SeededRNG(seed: params.seed &+ 0xF1B0_0000)
+
+        for _ in 0..<matFibrilCount {
+            let fx = matRng.nextFloat() * Float(size)
+            let fy = matRng.nextFloat() * Float(size)
+
+            let mesoIdx = min(Int(fy) * size + Int(fx), mesoField.count - 1)
+            let mesoValue = mesoField[max(mesoIdx, 0)]
+            let mesoThreshold = 0.35 + mesoValue * 0.50
+            if matRng.nextFloat() > mesoThreshold { continue }
+
+            let angle = matRng.nextFloat() * .pi
+            let curv = (matRng.nextFloat() - 0.5) * 0.15
+
+            drawFiber(
+                buffer: &buffer, dirXBuffer: &dirXBuffer, dirYBuffer: &dirYBuffer,
+                size: size, ox: fx, oy: fy, angle: angle,
+                halfLength: matFibrilHalfLength, width: matFibrilWidth,
+                curvature: curv, wobbleFreq: 0, wobbleAmp: 0, taperAmount: 0.15)
+        }
+
         // --- Stage 2: Prominent fibers (nagashizuki) ---
-        let passes: [FormationPass] = [
+        let choshiScoopCount = max(params.choshiScoops, 1)
+        let choshiFractionPerScoop = 0.40 / Float(choshiScoopCount)
+
+        var passes: [FormationPass] = [
             // Kakemizu: quick initial pour, strong gradient toward pour edge
             FormationPass(fraction: 0.40, baseAngle: 0.15, spreadMul: 1.0,
                           flowAngle: 0.15, flowBias: 0.3, flowOscillations: 0),
-            // Choshi: back-and-forth main formation, mild oscillation banding
-            FormationPass(fraction: 0.40, baseAngle: 0.15 + 1.2, spreadMul: 1.0,
-                          flowAngle: 0.15 + 1.2, flowBias: 0.15, flowOscillations: 3),
-            // Sutemizu: quick final pour, tight alignment, mild gradient
-            FormationPass(fraction: 0.20, baseAngle: 0.15, spreadMul: 0.3,
-                          flowAngle: 0.15, flowBias: 0.2, flowOscillations: 0),
         ]
+
+        // Choshi: multiple back-and-forth scoops at jittered angles
+        let choshiBaseAngle: Float = 0.15 + 1.2
+        var scoopRng = SeededRNG(seed: params.seed &+ 0xC305_0000)
+        for _ in 0..<choshiScoopCount {
+            let jitter = (scoopRng.nextFloat() - 0.5) * 0.4
+            let angle = choshiBaseAngle + jitter
+            let osc = 2 + Int(scoopRng.nextFloat() * 3)
+            passes.append(FormationPass(
+                fraction: choshiFractionPerScoop, baseAngle: angle,
+                spreadMul: 1.0, flowAngle: angle,
+                flowBias: 0.15, flowOscillations: osc))
+        }
+
+        // Sutemizu: quick final pour, tight alignment, mild gradient
+        passes.append(FormationPass(
+            fraction: 0.20, baseAngle: 0.15, spreadMul: 0.3,
+            flowAngle: 0.15, flowBias: 0.2, flowOscillations: 0))
 
         // Compensation for meso rejection (~40%), micro-floc expansion (~1.3×),
         // and higher density needed for layered fiber texture
-        let compensationFactor: Float = 3.0
+        let compensationFactor: Float = 10.0
 
         for pass in passes {
             let count = Int(Float(scaledFiberCount) * pass.fraction * compensationFactor)
@@ -171,15 +215,18 @@ enum FiberSimulator {
                 let angle = pass.baseAngle
                     + (rng.nextFloat() - 0.5) * angularSpread * pass.spreadMul
                 let curvature = (rng.nextFloat() - 0.5) * 0.3
+                let wobbleFreq = 2.0 + rng.nextFloat() * 4.0
+                let wobbleAmp = rng.nextFloat() * thisWidth * 3.0
+                let taperAmount = 0.3 + rng.nextFloat() * 0.5
 
-                // Micro-flocculation: occasional fiber clusters
-                let isCluster = rng.nextFloat() < 0.15
-                let clusterCount = isCluster ? Int(2 + rng.nextFloat() * 2) : 1
+                // Micro-flocculation: fiber clusters create visible knots
+                let isCluster = rng.nextFloat() < 0.35
+                let clusterCount = isCluster ? Int(4 + rng.nextFloat() * 5) : 1
 
                 for c in 0..<clusterCount {
-                    let cOx = c == 0 ? ox : ox + (rng.nextFloat() - 0.5) * thisWidth * 4
-                    let cOy = c == 0 ? oy : oy + (rng.nextFloat() - 0.5) * thisWidth * 4
-                    let cAngle = c == 0 ? angle : angle + (rng.nextFloat() - 0.5) * 0.1
+                    let cOx = c == 0 ? ox : ox + (rng.nextFloat() - 0.5) * thisWidth * 8
+                    let cOy = c == 0 ? oy : oy + (rng.nextFloat() - 0.5) * thisWidth * 8
+                    let cAngle = c == 0 ? angle : angle + (rng.nextFloat() - 0.5) * 0.2
 
                     drawFiber(
                         buffer: &buffer,
@@ -190,7 +237,10 @@ enum FiberSimulator {
                         angle: cAngle,
                         halfLength: thisHalfLength,
                         width: thisWidth,
-                        curvature: curvature
+                        curvature: curvature,
+                        wobbleFreq: wobbleFreq,
+                        wobbleAmp: wobbleAmp,
+                        taperAmount: taperAmount
                     )
                 }
             }
@@ -240,19 +290,26 @@ enum FiberSimulator {
         angle: Float,
         halfLength: Float,
         width: Float,
-        curvature: Float
+        curvature: Float,
+        wobbleFreq: Float,
+        wobbleAmp: Float,
+        taperAmount: Float
     ) {
         let steps = Int(halfLength * 2.0)
         let sigma = width
 
         let ca = cos(angle)
         let sa = sin(angle)
-        let radius = Int(ceil(sigma * 3.0))
 
         for step in 0...steps {
             let t = Float(step) / Float(steps) - 0.5 // -0.5..0.5
             let along = t * halfLength * 2.0
-            let perpOffset = curvature * along * along // quadratic bend
+
+            // Parabolic bend + sinusoidal wobble damped at ends
+            let perpBend = curvature * along * along
+            let envelope = 1.0 - 4.0 * t * t
+            let wobble = wobbleAmp * sin(t * wobbleFreq * 2.0 * .pi) * envelope
+            let perpOffset = perpBend + wobble
 
             let px = ox + ca * along - sa * perpOffset
             let py = oy + sa * along + ca * perpOffset
@@ -260,14 +317,19 @@ enum FiberSimulator {
             let ix = Int(px)
             let iy = Int(py)
 
-            for dy in -radius...radius {
-                for dx in -radius...radius {
+            // Width taper: thicker middle, thinner ends
+            let taperScale = 1.0 - taperAmount * 4.0 * t * t
+            let localSigma = sigma * max(taperScale, 0.15)
+            let localRadius = Int(ceil(localSigma * 3.0))
+
+            for dy in -localRadius...localRadius {
+                for dx in -localRadius...localRadius {
                     // Wrap edges for tileability
                     let wx = ((ix + dx) % size + size) % size
                     let wy = ((iy + dy) % size + size) % size
 
                     let dist = sqrt(Float(dx * dx + dy * dy))
-                    let falloff = exp(-dist * dist / (2.0 * sigma * sigma))
+                    let falloff = exp(-dist * dist / (2.0 * localSigma * localSigma))
 
                     let idx = wy * size + wx
                     buffer[idx] += falloff
@@ -386,7 +448,7 @@ enum FiberSimulator {
 
     nonisolated private static var cacheDirectory: URL {
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
-        return caches.appendingPathComponent("WashiDensity-v9", isDirectory: true)
+        return caches.appendingPathComponent("WashiDensity-v13", isDirectory: true)
     }
 
     nonisolated static func loadCached(presetID: String) -> CGImage? {

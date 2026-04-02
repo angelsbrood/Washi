@@ -41,7 +41,8 @@ extension WashiWeight {
                 formationAlignment: 0.25,
                 kumo: 0.15,
                 kumoScale: 0.45,
-                seed: 0  // overridden by identity
+                seed: 0,  // overridden by identity
+                choshiScoops: 4
             )
         case .standard:
             FiberSimulator.FiberParams(
@@ -51,7 +52,8 @@ extension WashiWeight {
                 formationAlignment: 0.28,
                 kumo: 0.25,
                 kumoScale: 0.40,
-                seed: 0
+                seed: 0,
+                choshiScoops: 5
             )
         case .thick:
             FiberSimulator.FiberParams(
@@ -61,7 +63,8 @@ extension WashiWeight {
                 formationAlignment: 0.30,
                 kumo: 0.35,
                 kumoScale: 0.40,
-                seed: 0
+                seed: 0,
+                choshiScoops: 6
             )
         }
     }
