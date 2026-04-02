@@ -409,6 +409,18 @@ struct ExplodedMaterialView: View {
                     .animation(.easeInOut(duration: 0.3), value: isGenerating)
             }
         }
+        .overlay(alignment: .topLeading) {
+            Button {
+                morphComplete = false
+                perspectiveActive = false
+                onDismiss()
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.body.weight(.semibold))
+            }
+            .buttonStyle(.plain)
+            .padding()
+        }
     }
 
     // MARK: - Layer Content (composited vs non-composited split)

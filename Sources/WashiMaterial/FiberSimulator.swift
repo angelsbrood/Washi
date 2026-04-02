@@ -367,44 +367,59 @@ public enum FiberSimulator {
 
     // MARK: - Meso-flocculation field
 
-    /// Grid-based value noise with smoothstep interpolation.
-    /// Produces tileable density variation at intermediate scale (~128px blobs at 1024px).
+    /// Multi-octave value noise with smoothstep interpolation.
+    /// Three octaves at grid sizes 8, 16, 32 break up single-frequency grid artifacts
+    /// while preserving tileable density variation at meso scale.
     private static func generateMesoField(size: Int, seed: UInt64) -> [Float] {
-        let gridSize = 8
-        let cellSize = Float(size) / Float(gridSize)
-        var gridRng = SeededRNG(seed: seed &+ 0xDEAD_BEEF)
+        let octaves: [(gridSize: Int, amplitude: Float, seedOffset: UInt64)] = [
+            (8,  1.0,  0xDEAD_BEEF),
+            (16, 0.5,  0xCAFE_BABE),
+            (32, 0.25, 0xFACE_FEED),
+        ]
+        let totalAmplitude = octaves.reduce(Float(0)) { $0 + $1.amplitude }
 
-        let stride = gridSize + 1
-        var grid = [Float](repeating: 0, count: stride * stride)
-        for i in 0..<grid.count {
-            grid[i] = gridRng.nextFloat()
-        }
-        // Make tileable: wrap edges
-        for i in 0...gridSize {
-            grid[i * stride + gridSize] = grid[i * stride]
-            grid[gridSize * stride + i] = grid[i]
+        // Build tileable grids for each octave
+        var grids: [(grid: [Float], stride: Int, cellSize: Float)] = []
+        for octave in octaves {
+            let stride = octave.gridSize + 1
+            var rng = SeededRNG(seed: seed &+ octave.seedOffset)
+            var grid = [Float](repeating: 0, count: stride * stride)
+            for i in 0..<grid.count {
+                grid[i] = rng.nextFloat()
+            }
+            // Make tileable: wrap edges
+            for i in 0...octave.gridSize {
+                grid[i * stride + octave.gridSize] = grid[i * stride]
+                grid[octave.gridSize * stride + i] = grid[i]
+            }
+            grids.append((grid, stride, Float(size) / Float(octave.gridSize)))
         }
 
-        var field = [Float](repeating: 0.5, count: size * size)
+        var field = [Float](repeating: 0, count: size * size)
         for y in 0..<size {
-            let fy = Float(y) / cellSize
-            let gy = Int(fy)
-            let ty = fy - Float(gy)
-            let sy = ty * ty * (3 - 2 * ty)  // smoothstep
             for x in 0..<size {
-                let fx = Float(x) / cellSize
-                let gx = Int(fx)
-                let tx = fx - Float(gx)
-                let sx = tx * tx * (3 - 2 * tx)
+                var value: Float = 0
+                for (i, octave) in octaves.enumerated() {
+                    let (grid, stride, cellSize) = grids[i]
+                    let fx = Float(x) / cellSize
+                    let fy = Float(y) / cellSize
+                    let gx = Int(fx)
+                    let gy = Int(fy)
+                    let tx = fx - Float(gx)
+                    let ty = fy - Float(gy)
+                    let sx = tx * tx * (3 - 2 * tx)
+                    let sy = ty * ty * (3 - 2 * ty)
 
-                let v00 = grid[gy * stride + gx]
-                let v10 = grid[gy * stride + gx + 1]
-                let v01 = grid[(gy + 1) * stride + gx]
-                let v11 = grid[(gy + 1) * stride + gx + 1]
+                    let v00 = grid[gy * stride + gx]
+                    let v10 = grid[gy * stride + gx + 1]
+                    let v01 = grid[(gy + 1) * stride + gx]
+                    let v11 = grid[(gy + 1) * stride + gx + 1]
 
-                let top = v00 + (v10 - v00) * sx
-                let bot = v01 + (v11 - v01) * sx
-                field[y * size + x] = top + (bot - top) * sy
+                    let top = v00 + (v10 - v00) * sx
+                    let bot = v01 + (v11 - v01) * sx
+                    value += (top + (bot - top) * sy) * octave.amplitude
+                }
+                field[y * size + x] = value / totalAmplitude
             }
         }
         return field

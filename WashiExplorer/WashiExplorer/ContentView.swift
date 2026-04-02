@@ -130,25 +130,25 @@ extension WashiPreset {
     static let gampi = WashiPreset(
         id: "gampi", name: "Gampi",
         fiberLength: 0.40, fiberFineness: 0.80, fiberVisibility: 0.25,
-        formationLayers: 0.60, formationAlignment: 0.50,
+        formationLayers: 0.60, formationAlignment: 0.32,
         kumo: 0.15, kumoScale: 0.50, surface: 0.25, warmth: 0.20
     )
     static let mitsumata = WashiPreset(
         id: "mitsumata", name: "Mitsumata",
-        fiberLength: 0.50, fiberFineness: 0.65, fiberVisibility: 0.30,
-        formationLayers: 0.70, formationAlignment: 0.60,
+        fiberLength: 0.28, fiberFineness: 0.80, fiberVisibility: 0.30,
+        formationLayers: 0.70, formationAlignment: 0.25,
         kumo: 0.10, kumoScale: 0.30, surface: 0.20, warmth: 0.35
     )
     static let unryu = WashiPreset(
         id: "unryu", name: "Unryu",
         fiberLength: 0.95, fiberFineness: 0.30, fiberVisibility: 0.70,
-        formationLayers: 1.00, formationAlignment: 0.15,
-        kumo: 0.35, kumoScale: 0.50, surface: 0.10, warmth: 0.40
+        formationLayers: 0.65, formationAlignment: 0.15,
+        kumo: 0.48, kumoScale: 0.50, surface: 0.10, warmth: 0.40
     )
     static let lace = WashiPreset(
         id: "lace", name: "Lace",
         fiberLength: 0.85, fiberFineness: 0.45, fiberVisibility: 0.80,
-        formationLayers: 0.50, formationAlignment: 0.20,
+        formationLayers: 0.35, formationAlignment: 0.20,
         kumo: 0.60, kumoScale: 0.60, surface: 0.05, warmth: 0.30
     )
 
@@ -169,8 +169,10 @@ enum WashiTier: String, CaseIterable {
 enum BackgroundMode: String, CaseIterable, Identifiable {
     case gradient = "Tanizaki"
     case muji = "Muji"
-    case light = "Light"
-    case dark = "Dark"
+    case mori = "Mori"
+    case indigo = "Indigo"
+    case light = "Shiro"
+    case dark = "Sumi"
     case custom = "Custom"
 
     var id: String { rawValue }
@@ -391,6 +393,8 @@ struct ContentView: View {
             } detail: {
                 previewPanel
                     .environment(\.colorScheme, previewScheme)
+                    .id(previewScheme)
+                    .transition(.opacity)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             #else
@@ -398,6 +402,8 @@ struct ContentView: View {
                 VStack(spacing: 0) {
                     previewPanel
                         .environment(\.colorScheme, previewScheme)
+                        .id(previewScheme)
+                        .transition(.opacity)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                     controlsPanel
                 }
@@ -409,27 +415,52 @@ struct ContentView: View {
             ToolbarItemGroup(placement: .automatic) {
                 Menu {
                     Button {
-                        backgroundMode = .gradient
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            backgroundMode = .gradient
+                        }
                     } label: {
-                        Label("Tanizaki", systemImage: "paintpalette")
+                        Label("Tanizaki", systemImage: "shadow")
                     }
                     Button {
-                        backgroundMode = .muji
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            backgroundMode = .muji
+                        }
                     } label: {
-                        Label("Muji", systemImage: "leaf")
+                        Label("Muji", systemImage: "house")
                     }
                     Button {
-                        backgroundMode = .light
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            backgroundMode = .mori
+                        }
                     } label: {
-                        Label("White", systemImage: "square.filled.on.square")
+                        Label("Mori", systemImage: "tree")
                     }
                     Button {
-                        backgroundMode = .dark
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            backgroundMode = .indigo
+                        }
                     } label: {
-                        Label("Black", systemImage: "square.fill")
+                        Label("Indigo", systemImage: "drop.fill")
                     }
                     Button {
-                        backgroundMode = .custom
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            backgroundMode = .light
+                        }
+                    } label: {
+                        Label("Shiro", systemImage: "rectangle.portrait")
+                    }
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            backgroundMode = .dark
+                        }
+                    } label: {
+                        Label("Sumi", systemImage: "paintbrush.pointed")
+                    }
+                    Button {
+                        backgroundImage = nil
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            backgroundMode = .custom
+                        }
                         triggerBackgroundPicker()
                     } label: {
                         Label("Photo", systemImage: "photo")
@@ -440,7 +471,9 @@ struct ContentView: View {
                 .help("Background")
 
                 Button {
-                    previewScheme = previewScheme == .dark ? .light : .dark
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        previewScheme = previewScheme == .dark ? .light : .dark
+                    }
                 } label: {
                     Image(systemName: previewScheme == .dark
                           ? "moon.fill" : "sun.max.fill")
@@ -448,7 +481,9 @@ struct ContentView: View {
                 .help("Toggle light/dark preview")
 
                 Button {
-                    showDebug.toggle()
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        showDebug.toggle()
+                    }
                 } label: {
                     Image(systemName: showDebug ? "eye.fill" : "eye")
                 }
@@ -693,15 +728,57 @@ struct ContentView: View {
                 startPoint: .top,
                 endPoint: .bottom
             )
+        case .mori:
+            LinearGradient(
+                colors: [
+                    Color(red: 0.18, green: 0.28, blue: 0.15),
+                    Color(red: 0.35, green: 0.42, blue: 0.22),
+                    Color(red: 0.72, green: 0.62, blue: 0.38),
+                    Color(red: 0.45, green: 0.35, blue: 0.25),
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        case .indigo:
+            LinearGradient(
+                colors: [
+                    Color(red: 0.10, green: 0.12, blue: 0.25),
+                    Color(red: 0.20, green: 0.25, blue: 0.42),
+                    Color(red: 0.12, green: 0.15, blue: 0.22),
+                    Color(red: 0.22, green: 0.20, blue: 0.30),
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
         case .light:
-            Color.white
+            LinearGradient(
+                colors: [
+                    Color(red: 0.98, green: 0.98, blue: 0.97),
+                    Color(red: 0.94, green: 0.93, blue: 0.91),
+                    Color(red: 0.97, green: 0.96, blue: 0.95),
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
         case .dark:
-            Color.black
+            LinearGradient(
+                colors: [
+                    Color(red: 0.05, green: 0.05, blue: 0.07),
+                    Color(red: 0.10, green: 0.09, blue: 0.08),
+                    Color(red: 0.04, green: 0.04, blue: 0.06),
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
         case .custom:
             if let backgroundImage {
-                Image(decorative: backgroundImage, scale: 1.0)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
+                GeometryReader { geo in
+                    Image(decorative: backgroundImage, scale: 1.0)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: geo.size.width, height: geo.size.height)
+                        .clipped()
+                }
             } else {
                 Color.gray.opacity(0.3)
             }
@@ -869,7 +946,6 @@ struct ContentView: View {
                     Image(decorative: cgImage, scale: 1.0)
                         .resizable()
                         .interpolation(.high)
-                        .aspectRatio(contentMode: .fill)
                         .colorEffect(ShaderLibrary.default.amberDensity())
                         .opacity(showDebug ? 1 : 0)
                 }
@@ -978,12 +1054,10 @@ struct ContentView: View {
                     paramSlider("Intensity", value: $kumo)
                     paramSlider("Scale", value: $kumoScale)
                 }
-                sliderSection("Surface") {
-                    paramSlider("Texture", value: $surface)
-                }
-                sliderSection("Scale") {
+                sliderSection("Texture") {
+                    paramSlider("Surface", value: $surface)
                     HStack(spacing: 8) {
-                        Text("Texture")
+                        Text("Scale")
                             .font(.caption)
                             .frame(width: 70, alignment: .leading)
                         Slider(value: $textureScale, in: 0.5...3.0)
@@ -1105,10 +1179,12 @@ struct ContentView: View {
 
     private var backgroundIcon: String {
         switch backgroundMode {
-        case .gradient: "paintpalette"
-        case .muji: "leaf"
-        case .light: "square.filled.on.square"
-        case .dark: "square.fill"
+        case .gradient: "shadow"
+        case .muji: "house"
+        case .mori: "tree"
+        case .indigo: "drop.fill"
+        case .light: "rectangle.portrait"
+        case .dark: "paintbrush.pointed"
         case .custom: "photo"
         }
     }
@@ -1395,7 +1471,7 @@ struct ContentView: View {
             guard !Task.isCancelled else { return }
 
             densityImages[key] = image
-            withAnimation(.easeOut(duration: 0.3)) {
+            _ = withAnimation(.easeOut(duration: 0.3)) {
                 generatingKeys.remove(key)
             }
         }
