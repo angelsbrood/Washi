@@ -114,7 +114,7 @@ extension WashiPreset {
         id: "kozo", name: "Kozo",
         fiberLength: 0.60, fiberFineness: 0.55, fiberVisibility: 0.50,
         formationLayers: 0.4118, formationAlignment: 0.28,
-        kumo: 0.25, kumoScale: 0.40, surface: 0.12, warmth: 0.0
+        kumo: 0.40, kumoScale: 0.40, surface: 0.12, warmth: 0.0
     )
     static let gampi = WashiPreset(
         id: "gampi", name: "Gampi",
@@ -207,7 +207,7 @@ struct ContentView: View {
     @State private var textureScale: Float = WashiPreset.kozo.textureScale
 
     // Cream tint (default = production standard-light warmTintOpacity)
-    @State private var creamOpacity: Float = 0.10
+    @State private var creamOpacity: Float = 0.30
 
     @State private var activePreset: WashiPreset = .kozo
     @State private var customPresets: [WashiPreset] = {
