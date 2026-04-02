@@ -88,6 +88,17 @@ enum ExplorerWeight: String, CaseIterable, Identifiable {
     #endif
 }
 
+enum TextureScale: String, CaseIterable {
+    case grid   // textureScale 1.0 — grid cards (~150pt)
+    case focus  // textureScale 2.0 — focus/expanded (~330–495pt)
+    var simulatorValue: Float { self == .focus ? 2.0 : 1.0 }
+}
+
+struct TextureKey: Hashable {
+    let weight: ExplorerWeight
+    let scale: TextureScale
+}
+
 // MARK: - Presets
 
 struct WashiPreset: Identifiable, Equatable, Codable {
@@ -223,11 +234,10 @@ struct ContentView: View {
     @State private var previewScheme: ColorScheme = .dark
     @State private var didApplySystemScheme = false
 
-    // Three density maps for Simulated row (one per weight)
-    @State private var densityImageThin: CGImage?
-    @State private var densityImageStandard: CGImage?
-    @State private var densityImageThick: CGImage?
-    @State private var isGenerating = false
+    // Density maps: 3 weights × 2 scales (grid + focus)
+    @State private var densityImages: [TextureKey: CGImage] = [:]
+    @State private var generatingKeys: Set<TextureKey> = []
+    @State private var regenerationTask: Task<Void, Never>?
     @State private var presetDensityCache: [String: CGImage] = [:]
 
     // Custom background
@@ -366,11 +376,8 @@ struct ContentView: View {
     }
 
     private func densityImage(for weight: ExplorerWeight) -> CGImage? {
-        switch weight {
-        case .thin: densityImageThin
-        case .standard: densityImageStandard
-        case .thick: densityImageThick
-        }
+        let scale: TextureScale = expandedCard != nil ? .focus : .grid
+        return densityImages[TextureKey(weight: weight, scale: scale)]
     }
 
     // MARK: - Body
@@ -454,36 +461,31 @@ struct ContentView: View {
                 UserDefaults.standard.set(data, forKey: "customPresets")
             }
         }
-        // Triple density map generation (all 3 weights on every param change)
+        // Dual-scale density generation (3 weights × 2 scales, priority-ordered)
         .task(id: densityParams) {
             if let cached = cachedPresetImages() {
-                densityImageThin = cached.thin
-                densityImageStandard = cached.standard
-                densityImageThick = cached.thick
+                densityImages = cached
+                generatingKeys = []
                 return
             }
 
-            if densityImageStandard != nil {
+            if !densityImages.isEmpty {
                 try? await Task.sleep(for: .milliseconds(300))
                 guard !Task.isCancelled else { return }
             }
-            withAnimation(.easeIn(duration: 0.25)) { isGenerating = true }
-            defer { withAnimation(.easeOut(duration: 0.3)) { isGenerating = false } }
 
-            let thinP = simulationParams(for: .thin)
-            let stdP = simulationParams(for: .standard)
-            let thickP = simulationParams(for: .thick)
-
-            async let thinImg = Task.detached { FiberSimulator.generate(params: thinP) }.value
-            async let stdImg = Task.detached { FiberSimulator.generate(params: stdP) }.value
-            async let thickImg = Task.detached { FiberSimulator.generate(params: thickP) }.value
-
-            let (t, s, k) = await (thinImg, stdImg, thickImg)
-            guard !Task.isCancelled else { return }
-
-            densityImageThin = t
-            densityImageStandard = s
-            densityImageThick = k
+            densityImages = [:]
+            regenerationTask?.cancel()
+            regenerationTask = Task { await generateAllTextures() }
+            await regenerationTask?.value
+        }
+        .onChange(of: expandedCard?.weight) { _, newWeight in
+            guard let newWeight else { return }
+            let focusKey = TextureKey(weight: newWeight, scale: .focus)
+            if densityImages[focusKey] == nil {
+                regenerationTask?.cancel()
+                regenerationTask = Task { await generateAllTextures() }
+            }
         }
         // Preset cache (generate all weights for built-in presets on launch)
         .task {
@@ -591,7 +593,7 @@ struct ContentView: View {
             scanDensityImage: tier == .scanned ? scanDensityImage : nil,
             seed: seed,
             showDebug: showDebug,
-            isGenerating: isGenerating,
+            isGenerating: generatingKeys.contains(TextureKey(weight: weight, scale: .focus)),
             startFocused: true,
             transitionNamespace: cardTransition,
             transitionID: "\(tier.rawValue)-\(weight.rawValue)",
@@ -775,9 +777,11 @@ struct ContentView: View {
     private func simulatedCard(weight: ExplorerWeight, cv: CardValues) -> some View {
         let image = densityImage(for: weight)
         let args = simulatedShaderArgs(for: cv)
+        let gridKey = TextureKey(weight: weight, scale: .grid)
+        let generating = generatingKeys.contains(gridKey)
 
-        if let cgImage = image {
-            ZStack {
+        ZStack {
+            if let cgImage = image {
                 // Normal material stack
                 Color.clear
                     .background { Rectangle().fill(cv.systemMaterial) }
@@ -804,27 +808,33 @@ struct ContentView: View {
                     .interpolation(.high)
                     .colorEffect(ShaderLibrary.default.amberDensity())
                     .opacity(showDebug ? 1 : 0)
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-            .overlay { generatingOverlay }
-        } else {
-            Color.clear
-                .background { Rectangle().fill(cv.systemMaterial) }
-                .overlay {
-                    if isGenerating {
-                        ProgressView()
-                    } else {
-                        VStack(spacing: 4) {
-                            Image(systemName: "sparkles")
-                                .font(.title3)
-                            Text("Simulated")
-                                .font(.caption)
+            } else {
+                Color.clear
+                    .background { Rectangle().fill(cv.systemMaterial) }
+                    .overlay {
+                        if generating {
+                            ProgressView()
+                        } else {
+                            VStack(spacing: 4) {
+                                Image(systemName: "sparkles")
+                                    .font(.title3)
+                                Text("Simulated")
+                                    .font(.caption)
+                            }
+                            .foregroundStyle(.secondary.opacity(0.5))
                         }
-                        .foregroundStyle(.secondary.opacity(0.5))
                     }
-                }
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+            }
+
+            if generating {
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(.ultraThinMaterial)
+                    .overlay { ProgressView() }
+                    .transition(.opacity)
+            }
         }
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .animation(.easeInOut(duration: 0.25), value: generating)
     }
 
     @ViewBuilder
@@ -902,16 +912,6 @@ struct ContentView: View {
     }
 
     // MARK: Overlays
-
-    @ViewBuilder
-    private var generatingOverlay: some View {
-        if isGenerating {
-            RoundedRectangle(cornerRadius: 12)
-                .fill(.ultraThinMaterial)
-                .overlay { ProgressView() }
-                .transition(.opacity)
-        }
-    }
 
     @ViewBuilder
     private var scanProcessingOverlay: some View {
@@ -1226,23 +1226,20 @@ struct ContentView: View {
         warmth = preset.warmth
         textureScale = preset.textureScale
 
+        // Populate both scales from cache
+        var newImages: [TextureKey: CGImage] = [:]
         for weight in ExplorerWeight.allCases {
-            let key = "\(preset.id)-\(weight.rawValue)"
-            if let cached = presetDensityCache[key] {
-                setDensityImage(cached, for: weight)
+            for scale in TextureScale.allCases {
+                let cacheKey = Self.presetCacheKey(presetID: preset.id, weight: weight, scale: scale)
+                if let cached = presetDensityCache[cacheKey] {
+                    newImages[TextureKey(weight: weight, scale: scale)] = cached
+                }
             }
         }
+        densityImages = newImages
     }
 
-    private func setDensityImage(_ image: CGImage, for weight: ExplorerWeight) {
-        switch weight {
-        case .thin: densityImageThin = image
-        case .standard: densityImageStandard = image
-        case .thick: densityImageThick = image
-        }
-    }
-
-    private func cachedPresetImages() -> (thin: CGImage, standard: CGImage, thick: CGImage)? {
+    private func cachedPresetImages() -> [TextureKey: CGImage]? {
         for preset in WashiPreset.all {
             if preset.fiberLength == fiberLength
                 && preset.fiberFineness == fiberFineness
@@ -1252,26 +1249,20 @@ struct ContentView: View {
                 && preset.kumoScale == kumoScale
                 && preset.textureScale == textureScale
             {
-                let thinKey = "\(preset.id)-\(ExplorerWeight.thin.rawValue)"
-                let stdKey = "\(preset.id)-\(ExplorerWeight.standard.rawValue)"
-                let thickKey = "\(preset.id)-\(ExplorerWeight.thick.rawValue)"
-
-                // Check in-memory cache first
-                if let t = presetDensityCache[thinKey],
-                   let s = presetDensityCache[stdKey],
-                   let k = presetDensityCache[thickKey] {
-                    return (t, s, k)
+                var results: [TextureKey: CGImage] = [:]
+                for weight in ExplorerWeight.allCases {
+                    for scale in TextureScale.allCases {
+                        let cacheKey = Self.presetCacheKey(presetID: preset.id, weight: weight, scale: scale)
+                        if let img = presetDensityCache[cacheKey] {
+                            results[TextureKey(weight: weight, scale: scale)] = img
+                        } else if let img = FiberSimulator.loadCached(presetID: cacheKey) {
+                            presetDensityCache[cacheKey] = img
+                            results[TextureKey(weight: weight, scale: scale)] = img
+                        }
+                    }
                 }
-
-                // Fall back to disk cache (survives rebuilds)
-                if let t = FiberSimulator.loadCached(presetID: thinKey),
-                   let s = FiberSimulator.loadCached(presetID: stdKey),
-                   let k = FiberSimulator.loadCached(presetID: thickKey) {
-                    presetDensityCache[thinKey] = t
-                    presetDensityCache[stdKey] = s
-                    presetDensityCache[thickKey] = k
-                    return (t, s, k)
-                }
+                let expectedCount = ExplorerWeight.allCases.count * TextureScale.allCases.count
+                if results.count == expectedCount { return results }
             }
         }
         return nil
@@ -1315,7 +1306,7 @@ struct ContentView: View {
     // MARK: - Simulation Params
 
     /// Compute simulation parameters for a given weight from current slider state.
-    private func simulationParams(for weight: ExplorerWeight) -> FiberSimulator.FiberParams {
+    private func simulationParams(for weight: ExplorerWeight, scale: TextureScale) -> FiberSimulator.FiberParams {
         let stdCount = 1500.0 + 6500.0 * formationLayers
         let weightCount = max(stdCount * weight.fiberCountRatio, 1500)
         let weightFL = clamp01((weightCount - 1500) / 6500)
@@ -1328,7 +1319,7 @@ struct ContentView: View {
             kumo: clamp01(kumo + weight.kumoOffset),
             kumoScale: clamp01(kumoScale + weight.kumoScaleOffset),
             seed: seed,
-            textureScale: textureScale
+            textureScale: scale.simulatorValue
         )
     }
 
@@ -1336,6 +1327,7 @@ struct ContentView: View {
     private static func simulationParams(
         preset: WashiPreset,
         weight: ExplorerWeight,
+        scale: TextureScale,
         seed: Float
     ) -> FiberSimulator.FiberParams {
         let stdCount = 1500.0 + 6500.0 * preset.formationLayers
@@ -1350,8 +1342,63 @@ struct ContentView: View {
             kumo: clamp01(preset.kumo + weight.kumoOffset),
             kumoScale: clamp01(preset.kumoScale + weight.kumoScaleOffset),
             seed: seed,
-            textureScale: preset.textureScale
+            textureScale: scale.simulatorValue
         )
+    }
+
+    private static func presetCacheKey(
+        presetID: String,
+        weight: ExplorerWeight,
+        scale: TextureScale
+    ) -> String {
+        let base = "\(presetID)-\(weight.rawValue)"
+        return scale == .focus ? "\(base)-focus" : base
+    }
+
+    // MARK: - Dual-Scale Generation
+
+    private func generationPriorities() -> [TextureKey] {
+        let weights = ExplorerWeight.allCases
+
+        if let expanded = expandedCard {
+            let active = expanded.weight
+            let others = weights.filter { $0 != active }
+            return [
+                TextureKey(weight: active, scale: .focus),
+                TextureKey(weight: active, scale: .grid),
+            ] + others.flatMap { w in
+                [TextureKey(weight: w, scale: .grid),
+                 TextureKey(weight: w, scale: .focus)]
+            }
+        } else {
+            return weights.map { TextureKey(weight: $0, scale: .grid) }
+                + weights.map { TextureKey(weight: $0, scale: .focus) }
+        }
+    }
+
+    private func generateAllTextures() async {
+        let needed = generationPriorities().filter { densityImages[$0] == nil }
+        guard !needed.isEmpty else { return }
+
+        withAnimation(.easeIn(duration: 0.25)) {
+            generatingKeys = Set(needed)
+        }
+
+        for key in needed {
+            guard !Task.isCancelled else { return }
+
+            let params = simulationParams(for: key.weight, scale: key.scale)
+            let image = await Task.detached(priority: .userInitiated) {
+                FiberSimulator.generate(params: params)
+            }.value
+
+            guard !Task.isCancelled else { return }
+
+            densityImages[key] = image
+            withAnimation(.easeOut(duration: 0.3)) {
+                generatingKeys.remove(key)
+            }
+        }
     }
 
     // MARK: - Preset Cache
@@ -1362,25 +1409,27 @@ struct ContentView: View {
             let id = preset.id
 
             for weight in ExplorerWeight.allCases {
-                guard !Task.isCancelled else { return }
-                await Task.yield()  // Let other queued tasks (scan processing) run
-                let key = "\(id)-\(weight.rawValue)"
+                for scale in TextureScale.allCases {
+                    guard !Task.isCancelled else { return }
+                    await Task.yield()
+                    let key = Self.presetCacheKey(presetID: id, weight: weight, scale: scale)
 
-                let cached: CGImage? = await Task.detached {
-                    FiberSimulator.loadCached(presetID: key)
-                }.value
-                if let cached {
-                    presetDensityCache[key] = cached
-                    continue
+                    let cached: CGImage? = await Task.detached {
+                        FiberSimulator.loadCached(presetID: key)
+                    }.value
+                    if let cached {
+                        presetDensityCache[key] = cached
+                        continue
+                    }
+
+                    let params = Self.simulationParams(preset: preset, weight: weight, scale: scale, seed: seed)
+                    let image = await Task.detached {
+                        let img = FiberSimulator.generate(params: params)
+                        FiberSimulator.saveToCache(img, presetID: key)
+                        return img
+                    }.value
+                    presetDensityCache[key] = image
                 }
-
-                let params = Self.simulationParams(preset: preset, weight: weight, seed: seed)
-                let image = await Task.detached {
-                    let img = FiberSimulator.generate(params: params)
-                    FiberSimulator.saveToCache(img, presetID: key)
-                    return img
-                }.value
-                presetDensityCache[key] = image
             }
         }
     }
