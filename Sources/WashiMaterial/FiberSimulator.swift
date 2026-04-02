@@ -254,12 +254,14 @@ public enum FiberSimulator {
             )
         }
 
-        // Normalize to 0..1
-        let maxVal = buffer.max() ?? 1.0
-        if maxVal > 0 {
-            for i in 0..<buffer.count {
-                buffer[i] /= maxVal
-            }
+        // Percentile normalization: p5→0.0, p95→1.0 for full density range
+        let sorted = buffer.sorted()
+        let count = sorted.count
+        let p5 = sorted[Int(Float(count) * 0.05)]
+        let p95 = sorted[Int(Float(count) * 0.95)]
+        let range = max(p95 - p5, 0.001)
+        for i in 0..<buffer.count {
+            buffer[i] = min(max((buffer[i] - p5) / range, 0.0), 1.0)
         }
 
         // Compute orientation map from accumulated direction vectors
