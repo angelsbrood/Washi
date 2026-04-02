@@ -180,8 +180,8 @@ enum FiberSimulator {
                 // Per-fiber size variation: biased toward shorter fibers
                 // (beaten kozo has a wide distribution — many short, few long)
                 let sizeSample = rng.nextFloat()
-                let lengthScale = 0.3 + pow(sizeSample, 1.5) * 1.2  // 0.3× – 1.5×
-                let widthScale = 0.4 + lengthScale * 0.6 + rng.nextFloat() * 0.2  // correlated
+                let lengthScale = 0.15 + pow(sizeSample, 5.0) * 1.5  // 0.15× – 1.65×
+                let widthScale = 0.5 + sqrt(lengthScale) * 0.5 + rng.nextFloat() * 0.15
                 let thisHalfLength = fiberHalfLength * lengthScale
                 let thisWidth = fiberWidth * widthScale
 
@@ -215,9 +215,9 @@ enum FiberSimulator {
                 let angle = pass.baseAngle
                     + (rng.nextFloat() - 0.5) * angularSpread * pass.spreadMul
                 let curvature = (rng.nextFloat() - 0.5) * 0.3
-                let wobbleFreq = 2.0 + rng.nextFloat() * 4.0
-                let wobbleAmp = rng.nextFloat() * thisWidth * 3.0
-                let taperAmount = 0.3 + rng.nextFloat() * 0.5
+                let wobbleFreq = lerp(5.0, 2.0, min(lengthScale, 1.0))
+                let wobbleAmp = pow(lengthScale, 2.0) * fiberWidth * 4.0
+                let taperAmount = lerp(0.2, 0.7, min(lengthScale, 1.0))
 
                 // Micro-flocculation: fiber clusters create visible knots
                 let isCluster = rng.nextFloat() < 0.35
@@ -448,7 +448,7 @@ enum FiberSimulator {
 
     nonisolated private static var cacheDirectory: URL {
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
-        return caches.appendingPathComponent("WashiDensity-v13", isDirectory: true)
+        return caches.appendingPathComponent("WashiDensity-v15", isDirectory: true)
     }
 
     nonisolated static func loadCached(presetID: String) -> CGImage? {
