@@ -297,8 +297,8 @@ enum FiberSimulator {
         wobbleAmp: Float,
         taperAmount: Float
     ) {
-        let steps = Int(halfLength * 2.0)
-        let sigma = width
+        let steps = max(Int(halfLength * 2.0), 1)
+        let sigma = max(width, 0.1)
 
         let ca = cos(angle)
         let sa = sin(angle)
