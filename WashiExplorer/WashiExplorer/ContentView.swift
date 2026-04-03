@@ -660,13 +660,9 @@ struct ContentView: View {
                 if isScanProcessing {
                     ProgressView()
                 } else {
-                    VStack(spacing: 4) {
-                        Image(systemName: "camera")
-                            .font(.title3)
-                        Text("Load Scan")
-                            .font(.caption)
-                    }
-                    .foregroundStyle(.secondary.opacity(0.5))
+                    Image(systemName: "scanner")
+                        .font(.largeTitle)
+                        .foregroundStyle(.secondary.opacity(0.5))
                 }
             }
             .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -675,7 +671,7 @@ struct ContentView: View {
                 Button {
                     triggerScanPicker()
                 } label: {
-                    Label("Load Scan...", systemImage: "photo.on.rectangle")
+                    Label("Load Scan...", systemImage: "scanner")
                 }
             }
     }
@@ -947,7 +943,7 @@ struct ContentView: View {
             Button {
                 triggerScanPicker()
             } label: {
-                Label("Load Scan...", systemImage: "photo.on.rectangle")
+                Label("Load Scan...", systemImage: "scanner")
             }
             if scanSourceImage != nil {
                 Button(role: .destructive) {
