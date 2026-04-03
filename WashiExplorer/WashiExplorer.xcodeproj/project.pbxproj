@@ -8,16 +8,37 @@
 
 /* Begin PBXBuildFile section */
 		437B31652F79E2380042A6DA /* WashiMaterial in Frameworks */ = {isa = PBXBuildFile; productRef = 437B31642F79E2380042A6DA /* WashiMaterial */; };
+		437B31752F79E2380042A6DA /* WashiMaterial in Frameworks */ = {isa = PBXBuildFile; productRef = 437B317A2F79E2380042A6DA /* WashiMaterial */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		437B31552F79E0330042A6DA /* WashiExplorer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WashiExplorer.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		437B31702F79E2380042A6DA /* WashiCapture.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WashiCapture.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		437B317B2F79E2380042A6DA /* Exceptions for "WashiExplorer" folder in "WashiCapture" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				BlurCard3DView.swift,
+				Washi.metal,
+			);
+			target = 437B31762F79E2380042A6DA /* WashiCapture */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		437B31572F79E0330042A6DA /* WashiExplorer */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				437B317B2F79E2380042A6DA /* Exceptions for "WashiExplorer" folder in "WashiCapture" target */,
+			);
 			path = WashiExplorer;
+			sourceTree = "<group>";
+		};
+		437B31712F79E2380042A6DA /* WashiCapture */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = WashiCapture;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -31,6 +52,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		437B31732F79E2380042A6DA /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				437B31752F79E2380042A6DA /* WashiMaterial in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -38,6 +67,7 @@
 			isa = PBXGroup;
 			children = (
 				437B31572F79E0330042A6DA /* WashiExplorer */,
+				437B31712F79E2380042A6DA /* WashiCapture */,
 				437B31562F79E0330042A6DA /* Products */,
 			);
 			sourceTree = "<group>";
@@ -46,6 +76,7 @@
 			isa = PBXGroup;
 			children = (
 				437B31552F79E0330042A6DA /* WashiExplorer.app */,
+				437B31702F79E2380042A6DA /* WashiCapture.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -76,6 +107,29 @@
 			productReference = 437B31552F79E0330042A6DA /* WashiExplorer.app */;
 			productType = "com.apple.product-type.application";
 		};
+		437B31762F79E2380042A6DA /* WashiCapture */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 437B31792F79E2380042A6DA /* Build configuration list for PBXNativeTarget "WashiCapture" */;
+			buildPhases = (
+				437B31722F79E2380042A6DA /* Sources */,
+				437B31732F79E2380042A6DA /* Frameworks */,
+				437B31742F79E2380042A6DA /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				437B31712F79E2380042A6DA /* WashiCapture */,
+			);
+			name = WashiCapture;
+			packageProductDependencies = (
+				437B317A2F79E2380042A6DA /* WashiMaterial */,
+			);
+			productName = WashiCapture;
+			productReference = 437B31702F79E2380042A6DA /* WashiCapture.app */;
+			productType = "com.apple.product-type.application";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -87,6 +141,9 @@
 				LastUpgradeCheck = 2640;
 				TargetAttributes = {
 					437B31542F79E0330042A6DA = {
+						CreatedOnToolsVersion = 26.4;
+					};
+					437B31762F79E2380042A6DA = {
 						CreatedOnToolsVersion = 26.4;
 					};
 				};
@@ -109,6 +166,7 @@
 			projectRoot = "";
 			targets = (
 				437B31542F79E0330042A6DA /* WashiExplorer */,
+				437B31762F79E2380042A6DA /* WashiCapture */,
 			);
 		};
 /* End PBXProject section */
@@ -121,10 +179,24 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		437B31742F79E2380042A6DA /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		437B31512F79E0330042A6DA /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		437B31722F79E2380042A6DA /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -263,6 +335,7 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -308,6 +381,7 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -340,6 +414,56 @@
 			};
 			name = Release;
 		};
+		437B31772F79E2380042A6DA /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 7BCP6LV7HJ;
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 26.3;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = moon.WashiCapture;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SUPPORTED_PLATFORMS = macosx;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		437B31782F79E2380042A6DA /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 7BCP6LV7HJ;
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 26.3;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = moon.WashiCapture;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SUPPORTED_PLATFORMS = macosx;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -361,6 +485,15 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		437B31792F79E2380042A6DA /* Build configuration list for PBXNativeTarget "WashiCapture" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				437B31772F79E2380042A6DA /* Debug */,
+				437B31782F79E2380042A6DA /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
@@ -372,6 +505,10 @@
 
 /* Begin XCSwiftPackageProductDependency section */
 		437B31642F79E2380042A6DA /* WashiMaterial */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = WashiMaterial;
+		};
+		437B317A2F79E2380042A6DA /* WashiMaterial */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = WashiMaterial;
 		};
