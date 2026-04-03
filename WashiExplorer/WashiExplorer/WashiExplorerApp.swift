@@ -14,7 +14,7 @@ struct WashiExplorerApp: App {
             ContentView()
                 #if os(macOS)
                 .frame(
-                    minWidth: 820, idealWidth: 1200,
+                    minWidth: 960, idealWidth: 1200,
                     minHeight: 600, idealHeight: 900
                 )
                 #endif

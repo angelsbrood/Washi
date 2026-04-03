@@ -159,7 +159,7 @@ extension WashiPreset {
 
 enum WashiTier: String, CaseIterable {
     case simulated = "Simulated"
-    case scanned = "Scanned"
+    case sampled = "Sampled"
     case scattered = "Scattered"
     case noise = "Noise"
 }
@@ -241,6 +241,7 @@ struct ContentView: View {
     @State private var densityImages: [TextureKey: CGImage] = [:]
     @State private var generatingKeys: Set<TextureKey> = []
     @State private var regenerationTask: Task<Void, Never>?
+    @State private var sliderEditGeneration = 0
     @State private var presetDensityCache: [String: CGImage] = [:]
 
     // Custom background
@@ -254,7 +255,7 @@ struct ContentView: View {
     @State private var backgroundPickerItem: PhotosPickerItem?
     #endif
 
-    // Tier 4: Scanned Washi
+    // Tier 4: Sampled Washi
     #if !os(macOS)
     @State private var showingScanPicker = false
     @State private var scanPickerItem: PhotosPickerItem?
@@ -283,27 +284,7 @@ struct ContentView: View {
 
     // MARK: Density generation trigger
 
-    private struct DensityParams: Equatable, Sendable {
-        var fiberLength: Float
-        var fiberFineness: Float
-        var formationLayers: Float
-        var formationAlignment: Float
-        var kumo: Float
-        var kumoScale: Float
-        var textureScale: Float
-    }
-
-    private var densityParams: DensityParams {
-        DensityParams(
-            fiberLength: fiberLength,
-            fiberFineness: fiberFineness,
-            formationLayers: formationLayers,
-            formationAlignment: formationAlignment,
-            kumo: kumo,
-            kumoScale: kumoScale,
-            textureScale: textureScale
-        )
-    }
+    private var densityParams: Int { sliderEditGeneration }
 
     private struct ScanProcessingParams: Equatable, Sendable {
         var generation: Int
@@ -369,7 +350,7 @@ struct ContentView: View {
          .float(0), .float(0), .float(seed)]
     }
 
-    /// Shader args for Simulated / Scanned tiers (8 float params + bounds).
+    /// Shader args for Simulated / Sampled tiers (8 float params + bounds).
     private func simulatedShaderArgs(for cv: CardValues) -> [Shader.Argument] {
         [.boundingRect, .float(cv.fiberVisibility),
          .float(0.06),
@@ -392,30 +373,16 @@ struct ContentView: View {
                 controlsPanel
                     .navigationSplitViewColumnWidth(min: 240, ideal: 280, max: 340)
             } detail: {
-                ZStack {
-                    previewPanel
-                        .environment(\.colorScheme, .light)
-                        .opacity(previewScheme == .light ? 1 : 0)
-                    previewPanel
-                        .environment(\.colorScheme, .dark)
-                        .opacity(previewScheme == .dark ? 1 : 0)
-                }
-                .animation(.easeInOut(duration: 0.3), value: previewScheme)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                previewPanel
+                    .environment(\.colorScheme, previewScheme)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             #else
             NavigationStack {
                 VStack(spacing: 0) {
-                    ZStack {
-                        previewPanel
-                            .environment(\.colorScheme, .light)
-                            .opacity(previewScheme == .light ? 1 : 0)
-                        previewPanel
-                            .environment(\.colorScheme, .dark)
-                            .opacity(previewScheme == .dark ? 1 : 0)
-                    }
-                    .animation(.easeInOut(duration: 0.3), value: previewScheme)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    previewPanel
+                        .environment(\.colorScheme, previewScheme)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                     controlsPanel
                 }
                 .ignoresSafeArea(edges: .top)
@@ -479,7 +446,7 @@ struct ContentView: View {
                 .help("Background")
 
                 Button {
-                    withAnimation(.easeInOut(duration: 0.3)) {
+                    withAnimation(.easeInOut(duration: 0.15)) {
                         previewScheme = previewScheme == .dark ? .light : .dark
                     }
                 } label: {
@@ -631,10 +598,9 @@ struct ContentView: View {
 
         ExplodedMaterialView(
             tier: tier,
-            colorScheme: previewScheme,
             cardValues: cv,
             densityImage: tier == .simulated ? densityImage(for: weight) : nil,
-            scanDensityImage: tier == .scanned ? scanDensityImage : nil,
+            scanDensityImage: tier == .sampled ? scanDensityImage : nil,
             seed: seed,
             showDebug: showDebug,
             isGenerating: generatingKeys.contains(TextureKey(weight: weight, scale: .focus)),
@@ -676,8 +642,8 @@ struct ContentView: View {
                 .environment(\.colorScheme, backgroundMode == .light ? .light : previewScheme)
                 .frame(width: 56, alignment: .center)
 
-            if tier == .scanned && scanDensityImage == nil {
-                scannedPlaceholderCard
+            if tier == .sampled && scanDensityImage == nil {
+                sampledPlaceholderCard
             } else {
                 ForEach(ExplorerWeight.allCases) { weight in
                     weightedTierCard(tier: tier, weight: weight)
@@ -686,7 +652,7 @@ struct ContentView: View {
         }
     }
 
-    private var scannedPlaceholderCard: some View {
+    private var sampledPlaceholderCard: some View {
         let cv = cardValues(for: .standard)
         return Color.clear
             .background { Rectangle().fill(cv.systemMaterial) }
@@ -810,8 +776,8 @@ struct ContentView: View {
                 scatteredCard(cv: cv)
             case .simulated:
                 simulatedCard(weight: weight, cv: cv)
-            case .scanned:
-                scannedCard(cv: cv)
+            case .sampled:
+                sampledCard(cv: cv)
             }
         }
         .matchedGeometryEffect(id: "\(tier.rawValue)-\(weight.rawValue)", in: cardTransition)
@@ -926,7 +892,7 @@ struct ContentView: View {
     }
 
     @ViewBuilder
-    private func scannedCard(cv: CardValues) -> some View {
+    private func sampledCard(cv: CardValues) -> some View {
         let args = simulatedShaderArgs(for: cv)
 
         Group {
@@ -969,13 +935,9 @@ struct ContentView: View {
                         if isScanProcessing {
                             ProgressView()
                         } else {
-                            VStack(spacing: 4) {
-                                Image(systemName: "camera")
-                                    .font(.title3)
-                                Text("Scanned")
-                                    .font(.caption)
-                            }
-                            .foregroundStyle(.secondary.opacity(0.5))
+                            Image(systemName: "scanner")
+                                .font(.title3)
+                                .foregroundStyle(.secondary.opacity(0.5))
                         }
                     }
                     .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -1053,17 +1015,17 @@ struct ContentView: View {
         ScrollView {
             VStack(spacing: 16) {
                 sliderSection("Fiber") {
-                    paramSlider("Length", value: $fiberLength)
-                    paramSlider("Fineness", value: $fiberFineness)
+                    paramSlider("Length", value: $fiberLength) { sliderEditGeneration += 1 }
+                    paramSlider("Fineness", value: $fiberFineness) { sliderEditGeneration += 1 }
                     paramSlider("Visibility", value: $fiberVisibility)
                 }
                 sliderSection("Formation") {
-                    paramSlider("Layers", value: $formationLayers)
-                    paramSlider("Alignment", value: $formationAlignment)
+                    paramSlider("Layers", value: $formationLayers) { sliderEditGeneration += 1 }
+                    paramSlider("Alignment", value: $formationAlignment) { sliderEditGeneration += 1 }
                 }
                 sliderSection("Kumo") {
-                    paramSlider("Intensity", value: $kumo)
-                    paramSlider("Scale", value: $kumoScale)
+                    paramSlider("Intensity", value: $kumo) { sliderEditGeneration += 1 }
+                    paramSlider("Scale", value: $kumoScale) { sliderEditGeneration += 1 }
                 }
                 sliderSection("Texture") {
                     paramSlider("Surface", value: $surface)
@@ -1071,7 +1033,9 @@ struct ContentView: View {
                         Text("Scale")
                             .font(.caption)
                             .frame(width: 70, alignment: .leading)
-                        Slider(value: $textureScale, in: 0.5...3.0)
+                        Slider(value: $textureScale, in: 0.5...3.0) { editing in
+                            if !editing { sliderEditGeneration += 1 }
+                        }
                         Text(String(format: "%.1f", textureScale))
                             .font(.caption.monospacedDigit())
                             .foregroundStyle(.secondary)
@@ -1285,12 +1249,14 @@ struct ContentView: View {
         }
     }
 
-    private func paramSlider(_ label: String, value: Binding<Float>) -> some View {
+    private func paramSlider(_ label: String, value: Binding<Float>, onRelease: (() -> Void)? = nil) -> some View {
         HStack(spacing: 8) {
             Text(label)
                 .font(.caption)
                 .frame(width: 70, alignment: .leading)
-            Slider(value: value, in: 0...1)
+            Slider(value: value, in: 0...1) { editing in
+                if !editing { onRelease?() }
+            }
             Text(String(format: "%.2f", value.wrappedValue))
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(.secondary)
@@ -1302,6 +1268,7 @@ struct ContentView: View {
 
     private func applyPreset(_ preset: WashiPreset) {
         activePreset = preset
+        sliderEditGeneration += 1
         fiberLength = preset.fiberLength
         fiberFineness = preset.fiberFineness
         fiberVisibility = preset.fiberVisibility

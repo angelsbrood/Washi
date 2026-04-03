@@ -20,7 +20,7 @@ struct ExplodedLayer {
 struct ExplodedMaterialView: View {
 
     let tier: WashiTier
-    let colorScheme: ColorScheme
+    @Environment(\.colorScheme) private var colorScheme
     let cardValues: CardValues
     let densityImage: CGImage?
     let scanDensityImage: CGImage?
@@ -51,11 +51,12 @@ struct ExplodedMaterialView: View {
     private let cardWidth: CGFloat = 300
     private let cardHeight: CGFloat = 200
 
-    // Multi-card zoom: 0.5 – 1.8. Single-card: fixed at 1.5.
-    // Gate at raw ~2.0 to enter single-card. Pinch-out to exit.
+    // Multi-card zoom: 0.5 – 1.8. Single-card: 1.5 – 2.0.
+    // Gate at raw ~3.0 to enter single-card. Pinch-out to exit.
     private let multiZoomMin: CGFloat = 0.5
     private let multiZoomMax: CGFloat = 1.8
     private let singleCardZoom: CGFloat = 1.5
+    private let focusZoomMax: CGFloat = 2.0
     private let gateRawThreshold: CGFloat = 3.0
     private let exitRawThreshold: CGFloat = 0.5
 
@@ -66,7 +67,7 @@ struct ExplodedMaterialView: View {
             ExplodedLayer(label: "System Blur", kind: .systemBlur),
         ]
 
-        if tier == .simulated || tier == .scanned {
+        if tier == .simulated || tier == .sampled {
             result.append(ExplodedLayer(label: "Fiber Density", kind: .densityMap))
         }
 
@@ -156,10 +157,14 @@ struct ExplodedMaterialView: View {
     /// Driven by focusAmount (animated state), not zoom level
     private var focusProgress: Double { focusAmount }
 
+    /// Debug amber overlay only in focus mode; suppressed in expanded
+    /// (where the density layer is already visible as its own exploded layer).
+    private var effectiveDebug: Bool { showDebug && isFocused }
+
     // MARK: - Depth Layout
 
     private var hasDensityLayer: Bool {
-        tier == .simulated || tier == .scanned
+        tier == .simulated || tier == .sampled
     }
 
     private func layerDepth(_ index: Int) -> CGFloat {
@@ -196,7 +201,19 @@ struct ExplodedMaterialView: View {
 
     // MARK: - Body
 
+    /// In focus mode, if the zoomed card would exceed the container, scale down to fit.
+    private func focusFitScale(in size: CGSize) -> CGFloat {
+        guard isFocused else { return 1.0 }
+        let resultW = cardWidth * 1.1 * zoom
+        let resultH = cardHeight * 1.1 * zoom
+        let padding: CGFloat = 32
+        let fitW = (size.width - padding) / resultW
+        let fitH = (size.height - padding) / resultH
+        return min(1.0, min(fitW, fitH))
+    }
+
     var body: some View {
+        GeometryReader { geo in
         ZStack {
             // Full-screen dismiss target behind everything
             Color.clear
@@ -271,7 +288,7 @@ struct ExplodedMaterialView: View {
                 }
             }
         }
-            .scaleEffect(zoom)
+            .scaleEffect(zoom * focusFitScale(in: geo.size))
             .offset(x: zoomPanOffset.width, y: zoomPanOffset.height)
             .padding()
         }
@@ -305,11 +322,13 @@ struct ExplodedMaterialView: View {
                             zoom = raw
                         }
                     } else {
-                        // Single-card: resistance in both directions, no real zoom
+                        // Single-card: zoom 1.5–3.0, rubberband at edges
                         if raw < singleCardZoom {
                             zoom = singleCardZoom - (singleCardZoom - raw) * 0.3
+                        } else if raw > focusZoomMax {
+                            zoom = focusZoomMax + (raw - focusZoomMax) * 0.1
                         } else {
-                            zoom = singleCardZoom + (raw - singleCardZoom) * 0.1
+                            zoom = raw
                         }
                     }
                 }
@@ -347,10 +366,11 @@ struct ExplodedMaterialView: View {
                                 showLabels = true
                             }
                         } else {
-                            // Snap back to single-card zoom
-                            zoomBase = singleCardZoom
+                            // Clamp to focus zoom range
+                            let clamped = max(singleCardZoom, min(focusZoomMax, raw))
+                            zoomBase = clamped
                             withAnimation(.spring(duration: 0.35, bounce: 0.3)) {
-                                zoom = singleCardZoom
+                                zoom = clamped
                             }
                         }
                     }
@@ -394,7 +414,7 @@ struct ExplodedMaterialView: View {
             onFocusChange?(newValue)
         }
         .overlay {
-            if isGenerating && (tier == .simulated || tier == .scanned) {
+            if isGenerating && (tier == .simulated || tier == .sampled) {
                 Rectangle()
                     .fill(.ultraThinMaterial)
                     .ignoresSafeArea()
@@ -420,6 +440,7 @@ struct ExplodedMaterialView: View {
             }
             .buttonStyle(.plain)
             .padding()
+        }
         }
     }
 
@@ -506,7 +527,7 @@ struct ExplodedMaterialView: View {
                 let imageView = Image(decorative: img, scale: 1.0)
                     .resizable()
                     .interpolation(.high)
-                if tier == .scanned {
+                if tier == .sampled {
                     imageView
                         .aspectRatio(contentMode: .fill)
                         .colorEffect(ShaderLibrary.default.amberDensity())
@@ -529,7 +550,7 @@ struct ExplodedMaterialView: View {
     // MARK: Active Density Image
 
     private var activeDensityImage: CGImage? {
-        tier == .scanned ? scanDensityImage : densityImage
+        tier == .sampled ? scanDensityImage : densityImage
     }
 
     // MARK: Shader Args
@@ -577,7 +598,7 @@ struct ExplodedMaterialView: View {
                 Color.clear
             }
 
-        case .scanned:
+        case .sampled:
             if let img = scanDensityImage {
                 Image(decorative: img, scale: 1.0)
                     .resizable()
@@ -628,7 +649,6 @@ struct ExplodedMaterialView: View {
 
         case .simulated:
             if let img = densityImage {
-                let debugOpacity = showDebug ? focusProgress : 0.0
                 ZStack {
                     Color.clear
                         .background { Rectangle().fill(cardValues.systemMaterial) }
@@ -647,21 +667,21 @@ struct ExplodedMaterialView: View {
                                 ))
                                 .allowsHitTesting(false)
                         }
-                        .opacity(1 - debugOpacity)
+                        .opacity(effectiveDebug ? 0 : 1)
 
                     Image(decorative: img, scale: 1.0)
                         .resizable()
                         .interpolation(.high)
                         .colorEffect(ShaderLibrary.default.amberDensity())
-                        .opacity(debugOpacity)
+                        .opacity(effectiveDebug ? 1 : 0)
                 }
+                .animation(.easeInOut(duration: 0.3), value: effectiveDebug)
             } else {
                 Rectangle().fill(cardValues.systemMaterial)
             }
 
-        case .scanned:
+        case .sampled:
             if let img = scanDensityImage {
-                let debugOpacity = showDebug ? focusProgress : 0.0
                 ZStack {
                     Color.clear
                         .background { Rectangle().fill(cardValues.systemMaterial) }
@@ -681,15 +701,16 @@ struct ExplodedMaterialView: View {
                                 ))
                                 .allowsHitTesting(false)
                         }
-                        .opacity(1 - debugOpacity)
+                        .opacity(effectiveDebug ? 0 : 1)
 
                     Image(decorative: img, scale: 1.0)
                         .resizable()
                         .interpolation(.high)
                         .aspectRatio(contentMode: .fill)
                         .colorEffect(ShaderLibrary.default.amberDensity())
-                        .opacity(debugOpacity)
+                        .opacity(effectiveDebug ? 1 : 0)
                 }
+                .animation(.easeInOut(duration: 0.3), value: effectiveDebug)
             } else {
                 Rectangle().fill(cardValues.systemMaterial)
             }
@@ -721,7 +742,6 @@ struct ExplodedMaterialView: View {
 
         case .simulated:
             if let img = densityImage {
-                let debugOpacity = showDebug ? focusProgress : 0.0
                 ZStack {
                     Image(decorative: img, scale: 1.0)
                         .resizable()
@@ -730,20 +750,20 @@ struct ExplodedMaterialView: View {
                             function: ShaderLibrary.default.washiSimulated,
                             arguments: simulatedArgs
                         ))
-                        .opacity(1 - debugOpacity)
+                        .opacity(effectiveDebug ? 0 : 1)
 
                     Image(decorative: img, scale: 1.0)
                         .resizable()
                         .interpolation(.high)
                         .colorEffect(ShaderLibrary.default.amberDensity())
-                        .opacity(debugOpacity)
+                        .opacity(effectiveDebug ? 1 : 0)
                 }
+                .animation(.easeInOut(duration: 0.3), value: effectiveDebug)
                 .allowsHitTesting(false)
             }
 
-        case .scanned:
+        case .sampled:
             if let img = scanDensityImage {
-                let debugOpacity = showDebug ? focusProgress : 0.0
                 ZStack {
                     Image(decorative: img, scale: 1.0)
                         .resizable()
@@ -753,15 +773,16 @@ struct ExplodedMaterialView: View {
                             function: ShaderLibrary.default.washiSimulated,
                             arguments: simulatedArgs
                         ))
-                        .opacity(1 - debugOpacity)
+                        .opacity(effectiveDebug ? 0 : 1)
 
                     Image(decorative: img, scale: 1.0)
                         .resizable()
                         .interpolation(.high)
                         .aspectRatio(contentMode: .fill)
                         .colorEffect(ShaderLibrary.default.amberDensity())
-                        .opacity(debugOpacity)
+                        .opacity(effectiveDebug ? 1 : 0)
                 }
+                .animation(.easeInOut(duration: 0.3), value: effectiveDebug)
                 .allowsHitTesting(false)
             }
         }
