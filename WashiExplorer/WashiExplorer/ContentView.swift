@@ -484,7 +484,6 @@ struct ContentView: View {
                 guard !Task.isCancelled else { return }
             }
 
-            densityImages = [:]
             regenerationTask?.cancel()
             regenerationTask = Task { await generateAllTextures() }
             await regenerationTask?.value
@@ -1427,7 +1426,7 @@ struct ContentView: View {
     }
 
     private func generateAllTextures() async {
-        let needed = generationPriorities().filter { densityImages[$0] == nil }
+        let needed = generationPriorities()
         guard !needed.isEmpty else { return }
 
         withAnimation(.easeIn(duration: 0.25)) {
