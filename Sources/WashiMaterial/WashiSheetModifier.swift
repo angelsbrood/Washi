@@ -22,26 +22,39 @@ public struct WashiSheetModifier: ViewModifier {
                     .allowsHitTesting(false)
             }
             .overlay {
-                Image(decorative: sheet.image, scale: displayScale)
-                    .resizable(resizingMode: .tile)
-                    .offset(
-                        x: -CGFloat(fmod(Float(offset.x), Float(sheet.tilePts))),
-                        y: -CGFloat(fmod(Float(offset.y), Float(sheet.tilePts)))
-                    )
-                    .colorEffect(
-                        ShaderLibrary.washiSimulated(
-                            .boundingRect,
-                            .float(sheet.weight.fiberVisibility(for: colorScheme)),
-                            .float(sheet.weight.tiltBoost),
-                            .float(motionManager.tiltIntensity),
-                            .float(motionManager.tiltAngle),
-                            .float(tiltShadowBias),
-                            .float(sheet.weight.surface),
-                            .float(sheet.weight.warmth),
-                            .float(stableSeedFloat)
+                // The offset always shifts the image up-and-left by
+                // `fmod(offset, tilePts)` in [0, tilePts). Pad one tile on the
+                // right and bottom so the bubble stays fully covered after the
+                // shift; left/top don't need padding since the image extends
+                // beyond those edges naturally. Without this, a plain
+                // `.offset` slides the tile frame out of the clipped area and
+                // leaves gaps.
+                GeometryReader { geo in
+                    Image(decorative: sheet.image, scale: displayScale)
+                        .resizable(resizingMode: .tile)
+                        .frame(
+                            width: geo.size.width + sheet.tilePts,
+                            height: geo.size.height + sheet.tilePts
                         )
-                    )
-                    .allowsHitTesting(false)
+                        .offset(
+                            x: -CGFloat(fmod(Float(offset.x), Float(sheet.tilePts))),
+                            y: -CGFloat(fmod(Float(offset.y), Float(sheet.tilePts)))
+                        )
+                        .colorEffect(
+                            ShaderLibrary.washiSimulated(
+                                .boundingRect,
+                                .float(sheet.weight.fiberVisibility(for: colorScheme)),
+                                .float(sheet.weight.tiltBoost),
+                                .float(motionManager.tiltIntensity),
+                                .float(motionManager.tiltAngle),
+                                .float(tiltShadowBias),
+                                .float(sheet.weight.surface),
+                                .float(sheet.weight.warmth),
+                                .float(stableSeedFloat)
+                            )
+                        )
+                }
+                .allowsHitTesting(false)
             }
             .onAppear { motionManager.start() }
             .onDisappear { motionManager.stop() }
