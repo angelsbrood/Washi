@@ -22,26 +22,41 @@ public struct WashiSheetModifier: ViewModifier {
                     .allowsHitTesting(false)
             }
             .overlay {
-                Image(decorative: sheet.image, scale: displayScale)
-                    .resizable(resizingMode: .tile)
-                    .offset(
-                        x: -CGFloat(fmod(Float(offset.x), Float(sheet.tilePts))),
-                        y: -CGFloat(fmod(Float(offset.y), Float(sheet.tilePts)))
+                Canvas { context, size in
+                    let resolved = context.resolve(
+                        Image(decorative: sheet.image, scale: displayScale)
                     )
-                    .colorEffect(
-                        ShaderLibrary.washiSimulated(
-                            .boundingRect,
-                            .float(sheet.weight.fiberVisibility(for: colorScheme)),
-                            .float(sheet.weight.tiltBoost),
-                            .float(motionManager.tiltIntensity),
-                            .float(motionManager.tiltAngle),
-                            .float(tiltShadowBias),
-                            .float(sheet.weight.surface),
-                            .float(sheet.weight.warmth),
-                            .float(stableSeedFloat)
-                        )
+                    let tw = sheet.tilePts
+                    let th = sheet.tilePts
+
+                    var sy = -fmod(offset.y, th)
+                    if sy > 0 { sy -= th }
+                    var y = sy
+                    while y < size.height {
+                        var sx = -fmod(offset.x, tw)
+                        if sx > 0 { sx -= tw }
+                        var x = sx
+                        while x < size.width {
+                            context.draw(resolved, in: CGRect(x: x, y: y, width: tw, height: th))
+                            x += tw
+                        }
+                        y += th
+                    }
+                }
+                .colorEffect(
+                    ShaderLibrary.washiSimulated(
+                        .boundingRect,
+                        .float(sheet.weight.fiberVisibility(for: colorScheme)),
+                        .float(sheet.weight.tiltBoost),
+                        .float(motionManager.tiltIntensity),
+                        .float(motionManager.tiltAngle),
+                        .float(tiltShadowBias),
+                        .float(sheet.weight.surface),
+                        .float(sheet.weight.warmth),
+                        .float(stableSeedFloat)
                     )
-                    .allowsHitTesting(false)
+                )
+                .allowsHitTesting(false)
             }
             .onAppear { motionManager.start() }
             .onDisappear { motionManager.stop() }
