@@ -117,82 +117,28 @@ extension WashiWeight {
 
 public struct WashiMaterialModifier: ViewModifier {
 
-    let weight: WashiWeight
-    let identity: String?
+    let sheet: WashiSheet
 
-    @Environment(\.colorScheme) private var colorScheme
-    @State private var fiberImage: CGImage?
-    @State private var surfaceWidth: CGFloat = 360
-
-    private var motionManager: WashiMotionManager { .shared }
-
-    /// Quantized texture scale (to 0.1) to avoid excessive cache entries.
-    private var quantizedTextureScale: Float {
-        let raw = weight.textureScale(for: surfaceWidth)
-        return (raw * 10).rounded() / 10
+    init(weight: WashiWeight, identity: String?) {
+        self.sheet = WashiSheet.create(
+            weight: weight,
+            identity: identity ?? "default",
+            displayScale: Self.currentDisplayScale
+        )
     }
 
     public func body(content: Content) -> some View {
-        content
-            .background {
-                GeometryReader { geo in
-                    Rectangle()
-                        .fill(weight.systemMaterial)
-                        .onAppear { surfaceWidth = geo.size.width }
-                        .onChange(of: geo.size.width) { _, w in surfaceWidth = w }
-                }
-            }
-            .overlay {
-                Color(red: 0.94, green: 0.92, blue: 0.89)
-                    .opacity(weight.warmTintOpacity(for: colorScheme))
-                    .allowsHitTesting(false)
-            }
-            .overlay {
-                if let fiberImage {
-                    Image(decorative: fiberImage, scale: 1.0)
-                        .resizable()
-                        .interpolation(.high)
-                        .colorEffect(
-                            ShaderLibrary.washiSimulated(
-                                .boundingRect,
-                                .float(weight.fiberVisibility(for: colorScheme)),
-                                .float(weight.tiltBoost),
-                                .float(motionManager.tiltIntensity),
-                                .float(motionManager.tiltAngle),
-                                .float(tiltShadowBias),
-                                .float(weight.surface),
-                                .float(weight.warmth),
-                                .float(stableSeedFloat)
-                            )
-                        )
-                        .allowsHitTesting(false)
-                }
-            }
-            .task(id: cacheKey) {
-                fiberImage = await WashiTextureCache.shared.texture(
-                    for: cacheKey,
-                    weight: weight,
-                    identity: identity,
-                    textureScale: quantizedTextureScale
-                )
-            }
-            .onAppear { motionManager.start() }
-            .onDisappear { motionManager.stop() }
+        content.washiMaterial(sheet)
     }
 
-    private var cacheKey: String {
-        "\(weight)-\(identity ?? "default")-ts\(quantizedTextureScale)"
-    }
-
-    private var tiltShadowBias: Float {
-        colorScheme == .dark ? 0.0 : 1.0
-    }
-
-    /// Stable float seed for the shader's surface noise.
-    /// Uses FNV-1a (same as WashiTextureCache) so it's deterministic
-    /// across launches. Swift's hashValue is randomly seeded per process.
-    private var stableSeedFloat: Float {
-        Float(WashiTextureCache.stableHash(cacheKey) & 0xFFFF)
+    private static var currentDisplayScale: CGFloat {
+        #if os(iOS)
+        UIScreen.main.scale
+        #elseif os(macOS)
+        NSScreen.main?.backingScaleFactor ?? 2.0
+        #else
+        2.0
+        #endif
     }
 }
 

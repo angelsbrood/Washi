@@ -1,6 +1,5 @@
 import CoreGraphics
 import Foundation
-import ImageIO
 
 // MARK: - Texture Cache
 
@@ -8,49 +7,57 @@ public actor WashiTextureCache {
 
     public static let shared = WashiTextureCache()
 
-    private let memoryCache = NSCache<NSString, CachedImage>()
-    private let textureSize = 1024
-
     // MARK: - Public API
 
+    /// Async sheet creation — for the convenience API where a brief
+    /// fade-in is acceptable. Delegates to WashiSheetStore.
+    public func sheet(
+        weight: WashiWeight,
+        identity: String,
+        displayScale: CGFloat
+    ) -> WashiSheet {
+        WashiSheetStore.shared.resolve(
+            weight: weight,
+            identity: identity,
+            displayScale: displayScale
+        )
+    }
+
     /// Retrieves or generates a density texture for the given identity and weight.
+    /// Retained for backward compatibility — delegates to WashiSheetStore.
     public func texture(
         for key: String,
         weight: WashiWeight,
         identity: String?,
         textureScale: Float = 1.0
     ) -> CGImage {
-        // 1. Check memory cache
-        if let cached = memoryCache.object(forKey: key as NSString) {
-            return cached.image
+        WashiSheetStore.shared.resolve(
+            weight: weight,
+            identity: identity ?? "default",
+            displayScale: 2.0  // default; textureScale ignored in sheet model
+        ).image
+    }
+
+    /// Prewarm sheets into cache.
+    public func prewarm(sheets: [(identity: String, weight: WashiWeight)], displayScale: CGFloat) {
+        for (identity, weight) in sheets {
+            _ = WashiSheetStore.shared.resolve(
+                weight: weight,
+                identity: identity,
+                displayScale: displayScale
+            )
         }
-
-        // 2. Check disk cache
-        if let diskImage = loadFromDisk(key: key) {
-            memoryCache.setObject(CachedImage(diskImage), forKey: key as NSString)
-            return diskImage
-        }
-
-        // 3. Generate
-        var params = weight.simulationParams
-        params.seed = Self.stableHash("\(identity ?? "default")-\(weight)")
-        params.textureScale = textureScale
-
-        let image = FiberSimulator.generate(params: params, size: textureSize)
-
-        // 4. Cache to memory and disk
-        memoryCache.setObject(CachedImage(image), forKey: key as NSString)
-        saveToDisk(image: image, key: key)
-
-        return image
     }
 
     /// Pre-generate textures for known surface identities.
-    /// Call at app launch to avoid generation delay on first display.
+    /// Retained for backward compatibility.
     public func prewarm(identities: [(String, WashiWeight)]) {
         for (identity, weight) in identities {
-            let key = "\(weight)-\(identity)"
-            _ = texture(for: key, weight: weight, identity: identity)
+            _ = WashiSheetStore.shared.resolve(
+                weight: weight,
+                identity: identity,
+                displayScale: 2.0
+            )
         }
     }
 
@@ -69,38 +76,4 @@ public actor WashiTextureCache {
         return hash
     }
 
-    // MARK: - Disk Cache
-
-    private func diskCacheURL(for key: String) -> URL {
-        let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-        let dir = caches.appendingPathComponent("WashiTextures-v22", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let safe = key.replacingOccurrences(of: "/", with: "_")
-                      .replacingOccurrences(of: ":", with: "_")
-        return dir.appendingPathComponent("\(safe).png")
-    }
-
-    private func loadFromDisk(key: String) -> CGImage? {
-        let url = diskCacheURL(for: key)
-        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
-              let image = CGImageSourceCreateImageAtIndex(source, 0, nil)
-        else { return nil }
-        return image
-    }
-
-    private func saveToDisk(image: CGImage, key: String) {
-        let url = diskCacheURL(for: key)
-        guard let dest = CGImageDestinationCreateWithURL(
-            url as CFURL, "public.png" as CFString, 1, nil
-        ) else { return }
-        CGImageDestinationAddImage(dest, image, nil)
-        CGImageDestinationFinalize(dest)
-    }
-}
-
-// MARK: - Cache Wrapper
-
-private class CachedImage {
-    let image: CGImage
-    init(_ image: CGImage) { self.image = image }
 }
