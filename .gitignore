@@ -13,3 +13,10 @@ xcuserdata/
 
 # Local plans
 PLAN-*.md
+PLAN.md
+
+# Agent tooling (local only)
+CLAUDE.md
+AGENTS.md
+.claude/
+.codex/
