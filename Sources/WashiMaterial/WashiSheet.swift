@@ -17,15 +17,26 @@ public final class WashiSheet: @unchecked Sendable {
     public let weight: WashiWeight
     public let identity: String
 
-    /// Tile size in points for the current display scale.
-    /// 1024 / displayScale. Used by the shader for fmod wrapping.
-    public let tilePts: CGFloat
+    /// Tile width and height in points for the current display scale.
+    /// `tileSize / displayScale`. Used by the shader for fmod wrapping.
+    public let tilePtsWidth: CGFloat
+    public let tilePtsHeight: CGFloat
 
-    init(image: CGImage, weight: WashiWeight, identity: String, displayScale: CGFloat) {
+    /// Square-tile alias for backwards compatibility — equals `tilePtsWidth`.
+    public var tilePts: CGFloat { tilePtsWidth }
+
+    init(
+        image: CGImage,
+        weight: WashiWeight,
+        identity: String,
+        tileSize: CGSize,
+        displayScale: CGFloat
+    ) {
         self.image = image
         self.weight = weight
         self.identity = identity
-        self.tilePts = 1024.0 / displayScale
+        self.tilePtsWidth = tileSize.width / displayScale
+        self.tilePtsHeight = tileSize.height / displayScale
     }
 
     // MARK: - Synchronous Creation
@@ -42,14 +53,20 @@ public final class WashiSheet: @unchecked Sendable {
     /// 3. Generate (FiberSimulator, pure CPU) — ~50-100ms cold
     ///
     /// Result is cached to both memory and disk for subsequent calls.
+    ///
+    /// `tileSize` defaults to the legacy 1024² square — pass a larger or
+    /// non-square size for sheets that need more unique fiber before the
+    /// shader's fmod wrap recurs.
     public static func create(
         weight: WashiWeight,
         identity: String,
+        tileSize: CGSize = CGSize(width: 1024, height: 1024),
         displayScale: CGFloat
     ) -> WashiSheet {
         WashiSheetStore.shared.resolve(
             weight: weight,
             identity: identity,
+            tileSize: tileSize,
             displayScale: displayScale
         )
     }

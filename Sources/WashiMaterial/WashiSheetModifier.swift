@@ -5,6 +5,7 @@ import SwiftUI
 public struct WashiSheetModifier: ViewModifier {
     let sheet: WashiSheet
     let offset: CGPoint
+    let scale: CGFloat
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.displayScale) private var displayScale
@@ -26,8 +27,12 @@ public struct WashiSheetModifier: ViewModifier {
                     let resolved = context.resolve(
                         Image(decorative: sheet.image, scale: displayScale)
                     )
-                    let tw = sheet.tilePts
-                    let th = sheet.tilePts
+                    // Tile size pre-multiplied by `scale` so fibers grow on
+                    // screen at the same rate as text. At scale=2 the same
+                    // shader-tile spans twice as many points — fibers appear
+                    // 2× larger, still rendered at native resolution.
+                    let tw = sheet.tilePtsWidth * scale
+                    let th = sheet.tilePtsHeight * scale
 
                     var sy = -fmod(offset.y, th)
                     if sy > 0 { sy -= th }
@@ -80,10 +85,15 @@ extension View {
     ///   - sheet: A `WashiSheet` created via `WashiSheet.create()` or `WashiTextureCache`.
     ///   - offset: Point offset into the infinite tiled sheet.
     ///     Adjacent offsets produce adjacent paper regions.
+    ///   - scale: Multiplier applied to the tile dimensions so fibers grow on
+    ///     screen with the consumer's content. Default `1.0` preserves prior
+    ///     behavior; at `2.0`, fibers appear 2× larger (same shader-tile,
+    ///     twice as many points per fiber).
     public func washiMaterial(
         _ sheet: WashiSheet,
-        offset: CGPoint = .zero
+        offset: CGPoint = .zero,
+        scale: CGFloat = 1.0
     ) -> some View {
-        modifier(WashiSheetModifier(sheet: sheet, offset: offset))
+        modifier(WashiSheetModifier(sheet: sheet, offset: offset, scale: scale))
     }
 }

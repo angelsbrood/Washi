@@ -12,14 +12,16 @@ internal final class WashiSheetStore: @unchecked Sendable {
 
     private let memoryCache = NSCache<NSString, CachedImage>()
     private let lock = NSLock()  // protects disk write races
-    private let textureSize = 1024
 
     func resolve(
         weight: WashiWeight,
         identity: String,
+        tileSize: CGSize = CGSize(width: 1024, height: 1024),
         displayScale: CGFloat
     ) -> WashiSheet {
-        let cacheKey = "\(weight)-\(identity)" as NSString
+        let w = max(Int(tileSize.width.rounded()), 16)
+        let h = max(Int(tileSize.height.rounded()), 16)
+        let cacheKey = "\(weight)-\(identity)-\(w)x\(h)" as NSString
 
         // 1. Memory cache — microseconds
         if let cached = memoryCache.object(forKey: cacheKey) {
@@ -27,6 +29,7 @@ internal final class WashiSheetStore: @unchecked Sendable {
                 image: cached.image,
                 weight: weight,
                 identity: identity,
+                tileSize: tileSize,
                 displayScale: displayScale
             )
         }
@@ -38,16 +41,17 @@ internal final class WashiSheetStore: @unchecked Sendable {
                 image: diskImage,
                 weight: weight,
                 identity: identity,
+                tileSize: tileSize,
                 displayScale: displayScale
             )
         }
 
-        // 3. Generate — ~50-100ms cold
+        // 3. Generate — scales linearly with area; ~50-100ms at 1024²
         var params = weight.simulationParams
         params.seed = WashiTextureCache.stableHash("\(identity)-\(weight)")
         params.textureScale = 1.0  // always 1.0 in the sheet model
 
-        let image = FiberSimulator.generate(params: params, size: textureSize)
+        let image = FiberSimulator.generate(params: params, width: w, height: h)
 
         // 4. Cache to memory and disk
         memoryCache.setObject(CachedImage(image), forKey: cacheKey)
@@ -57,6 +61,7 @@ internal final class WashiSheetStore: @unchecked Sendable {
             image: image,
             weight: weight,
             identity: identity,
+            tileSize: tileSize,
             displayScale: displayScale
         )
     }

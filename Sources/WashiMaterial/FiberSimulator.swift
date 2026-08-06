@@ -73,32 +73,40 @@ public enum FiberSimulator {
     // MARK: - Generation
 
     public static func generate(params: FiberParams, size: Int = 1024) -> CGImage {
-        var buffer = [Float](repeating: 0.0, count: size * size)
-        var dirXBuffer = [Float](repeating: 0.0, count: size * size)
-        var dirYBuffer = [Float](repeating: 0.0, count: size * size)
+        generate(params: params, width: size, height: size)
+    }
+
+    public static func generate(params: FiberParams, width: Int, height: Int) -> CGImage {
+        var buffer = [Float](repeating: 0.0, count: width * height)
+        var dirXBuffer = [Float](repeating: 0.0, count: width * height)
+        var dirYBuffer = [Float](repeating: 0.0, count: width * height)
         var rng = SeededRNG(seed: params.seed)
 
-        // Scale fiber dimensions and count by textureScale
+        // Scale fiber dimensions by the smaller axis (characteristic dimension)
+        // so a 1024×8192 sheet uses the same per-fiber sizing as a 1024² one;
+        // count scales by area so coverage density holds.
+        let dim = min(width, height)
         let ts = max(params.textureScale, 0.1)
-        let fiberHalfLength = Float(size) * lerp(0.004, 0.018, params.fiberLength) / ts
-        let fiberWidth = Float(size) * lerp(0.0004, 0.0012, 1.0 - params.fiberFineness) / ts
+        let fiberHalfLength = Float(dim) * lerp(0.004, 0.018, params.fiberLength) / ts
+        let fiberWidth = Float(dim) * lerp(0.0004, 0.0012, 1.0 - params.fiberFineness) / ts
         let angularSpread = lerp(0.3, .pi, params.formationAlignment)
-        let scaledFiberCount = Int(Float(params.fiberCount) * ts * ts)
+        let areaScale = Float(width * height) / (1024.0 * 1024.0)
+        let scaledFiberCount = Int(Float(params.fiberCount) * ts * ts * areaScale)
 
         // Pre-compute meso-flocculation field
-        let mesoField = generateMesoField(size: size, seed: params.seed)
+        let mesoField = generateMesoField(width: width, height: height, seed: params.seed)
 
         // --- Stage 1: Base mat (continuous paper body) ---
         // Direct density floor with meso variation — no individual fibrils.
         // Calibrated so mat normalizes to ~0.5 (shader neutral) after
         // prominent fiber peaks set the max.
         let matBaseDensity = lerp(3.0, 10.0, params.fiberFineness)
-            * Float(scaledFiberCount) / 4200.0
-        let matOrientField = generateMesoField(size: size, seed: params.seed &+ 42)
+            * Float(scaledFiberCount) / (4200.0 * areaScale)
+        let matOrientField = generateMesoField(width: width, height: height, seed: params.seed &+ 42)
 
-        for y in 0..<size {
-            for x in 0..<size {
-                let idx = y * size + x
+        for y in 0..<height {
+            for x in 0..<width {
+                let idx = y * width + x
                 let mesoValue = mesoField[idx]
                 let density = matBaseDensity * (0.3 + mesoValue * 1.4)
                 buffer[idx] = density
@@ -120,10 +128,10 @@ public enum FiberSimulator {
         var matRng = SeededRNG(seed: params.seed &+ 0xF1B0_0000)
 
         for _ in 0..<matFibrilCount {
-            let fx = matRng.nextFloat() * Float(size)
-            let fy = matRng.nextFloat() * Float(size)
+            let fx = matRng.nextFloat() * Float(width)
+            let fy = matRng.nextFloat() * Float(height)
 
-            let mesoIdx = min(Int(fy) * size + Int(fx), mesoField.count - 1)
+            let mesoIdx = min(Int(fy) * width + Int(fx), mesoField.count - 1)
             let mesoValue = mesoField[max(mesoIdx, 0)]
             let mesoThreshold = 0.35 + mesoValue * 0.50
             if matRng.nextFloat() > mesoThreshold { continue }
@@ -133,8 +141,8 @@ public enum FiberSimulator {
 
             drawFiber(
                 buffer: &buffer, dirXBuffer: &dirXBuffer, dirYBuffer: &dirYBuffer,
-                size: size, ox: fx, oy: fy, angle: angle,
-                halfLength: matFibrilHalfLength, width: matFibrilWidth,
+                width: width, height: height, ox: fx, oy: fy, angle: angle,
+                halfLength: matFibrilHalfLength, fiberWidthSigma: matFibrilWidth,
                 curvature: curv, wobbleFreq: 0, wobbleAmp: 0, taperAmount: 0.15)
         }
 
@@ -191,12 +199,12 @@ public enum FiberSimulator {
                     : pow(rawAlong, 1.0 + pass.flowBias * 2.0)
                 let across = rng.nextFloat()
 
-                let rawX = (flowCos * along - flowSin * across) * Float(size)
-                let rawY = (flowSin * along + flowCos * across) * Float(size)
-                let ox = ((rawX.truncatingRemainder(dividingBy: Float(size))) + Float(size))
-                    .truncatingRemainder(dividingBy: Float(size))
-                let oy = ((rawY.truncatingRemainder(dividingBy: Float(size))) + Float(size))
-                    .truncatingRemainder(dividingBy: Float(size))
+                let rawX = (flowCos * along - flowSin * across) * Float(width)
+                let rawY = (flowSin * along + flowCos * across) * Float(height)
+                let ox = ((rawX.truncatingRemainder(dividingBy: Float(width))) + Float(width))
+                    .truncatingRemainder(dividingBy: Float(width))
+                let oy = ((rawY.truncatingRemainder(dividingBy: Float(height))) + Float(height))
+                    .truncatingRemainder(dividingBy: Float(height))
 
                 // Choshi oscillation: sinusoidal density variation from back-and-forth
                 if pass.flowOscillations > 0 {
@@ -206,7 +214,7 @@ public enum FiberSimulator {
                 }
 
                 // Meso-flocculation: accept/reject based on noise field
-                let mesoIdx = min(Int(oy) * size + Int(ox), mesoField.count - 1)
+                let mesoIdx = min(Int(oy) * width + Int(ox), mesoField.count - 1)
                 let mesoValue = mesoField[max(mesoIdx, 0)]
                 let mesoThreshold = 0.35 + mesoValue * 0.50
                 if rng.nextFloat() > mesoThreshold { continue }
@@ -231,11 +239,11 @@ public enum FiberSimulator {
                         buffer: &buffer,
                         dirXBuffer: &dirXBuffer,
                         dirYBuffer: &dirYBuffer,
-                        size: size,
+                        width: width, height: height,
                         ox: cOx, oy: cOy,
                         angle: cAngle,
                         halfLength: thisHalfLength,
-                        width: thisWidth,
+                        fiberWidthSigma: thisWidth,
                         curvature: curvature,
                         wobbleFreq: wobbleFreq,
                         wobbleAmp: wobbleAmp,
@@ -247,7 +255,7 @@ public enum FiberSimulator {
 
         if params.kumo > 0 {
             applyKumo(
-                buffer: &buffer, size: size,
+                buffer: &buffer, width: width, height: height,
                 intensity: params.kumo,
                 scale: params.kumoScale,
                 seed: params.seed
@@ -265,8 +273,8 @@ public enum FiberSimulator {
         }
 
         // Compute orientation map from accumulated direction vectors
-        var orientationBuffer = [Float](repeating: 0.0, count: size * size)
-        for i in 0..<size * size {
+        var orientationBuffer = [Float](repeating: 0.0, count: width * height)
+        for i in 0..<(width * height) {
             if buffer[i] > 0.001 {
                 let angle = atan2(dirYBuffer[i], dirXBuffer[i])
                 let normalized = angle < 0 ? angle + .pi : angle  // [0, π)
@@ -276,7 +284,7 @@ public enum FiberSimulator {
             }
         }
 
-        return bufferToCGImage(densityBuffer: buffer, orientationBuffer: orientationBuffer, size: size)
+        return bufferToCGImage(densityBuffer: buffer, orientationBuffer: orientationBuffer, width: width, height: height)
     }
 
     // MARK: - Fiber drawing
@@ -285,18 +293,18 @@ public enum FiberSimulator {
         buffer: inout [Float],
         dirXBuffer: inout [Float],
         dirYBuffer: inout [Float],
-        size: Int,
+        width: Int, height: Int,
         ox: Float, oy: Float,
         angle: Float,
         halfLength: Float,
-        width: Float,
+        fiberWidthSigma: Float,
         curvature: Float,
         wobbleFreq: Float,
         wobbleAmp: Float,
         taperAmount: Float
     ) {
         let steps = max(Int(halfLength * 2.0), 1)
-        let sigma = max(width, 0.1)
+        let sigma = max(fiberWidthSigma, 0.1)
 
         let ca = cos(angle)
         let sa = sin(angle)
@@ -325,13 +333,13 @@ public enum FiberSimulator {
             for dy in -localRadius...localRadius {
                 for dx in -localRadius...localRadius {
                     // Wrap edges for tileability
-                    let wx = ((ix + dx) % size + size) % size
-                    let wy = ((iy + dy) % size + size) % size
+                    let wx = ((ix + dx) % width + width) % width
+                    let wy = ((iy + dy) % height + height) % height
 
                     let dist = sqrt(Float(dx * dx + dy * dy))
                     let falloff = exp(-dist * dist / (2.0 * localSigma * localSigma))
 
-                    let idx = wy * size + wx
+                    let idx = wy * width + wx
                     buffer[idx] += falloff
                     dirXBuffer[idx] += ca * falloff
                     dirYBuffer[idx] += sa * falloff
@@ -344,7 +352,7 @@ public enum FiberSimulator {
 
     private static func applyKumo(
         buffer: inout [Float],
-        size: Int,
+        width: Int, height: Int,
         intensity: Float,
         scale: Float,
         seed: UInt64
@@ -355,17 +363,18 @@ public enum FiberSimulator {
         let ox = rng.nextFloat() * 1000.0
         let oy = rng.nextFloat() * 1000.0
 
-        let invSize = 1.0 / Float(size)
-        for y in 0..<size {
-            let v = Float(y) * invSize
-            for x in 0..<size {
-                let u = Float(x) * invSize
+        let invWidth = 1.0 / Float(width)
+        let invHeight = 1.0 / Float(height)
+        for y in 0..<height {
+            let v = Float(y) * invHeight
+            for x in 0..<width {
+                let u = Float(x) * invWidth
 
                 var n = snoise(u * freq + ox, v * freq + oy) * 0.7
                 n += snoise(u * freq * 2.0 + ox + 50, v * freq * 2.0 + oy + 50) * 0.3
 
                 let modFactor = 1.0 + n * intensity
-                buffer[y * size + x] *= modFactor
+                buffer[y * width + x] *= modFactor
             }
         }
     }
@@ -444,7 +453,7 @@ public enum FiberSimulator {
     /// Multi-octave simplex noise for meso-scale density variation.
     /// Three octaves at frequencies 8, 16, 32 produce organic, isotropic
     /// variation without the axis-aligned grid artifacts of value noise.
-    private static func generateMesoField(size: Int, seed: UInt64) -> [Float] {
+    private static func generateMesoField(width: Int, height: Int, seed: UInt64) -> [Float] {
         let octaves: [(frequency: Float, amplitude: Float, seedOffset: UInt64)] = [
             (8,  1.0,  0xDEAD_BEEF),
             (16, 0.5,  0xCAFE_BABE),
@@ -458,19 +467,22 @@ public enum FiberSimulator {
             offsets.append((rng.nextFloat() * 1000.0, rng.nextFloat() * 1000.0))
         }
 
-        let invSize = 1.0 / Float(size)
-        var field = [Float](repeating: 0, count: size * size)
-        for y in 0..<size {
-            let v = Float(y) * invSize
-            for x in 0..<size {
-                let u = Float(x) * invSize
+        // Sample u and v over the same characteristic dimension so noise
+        // features are isotropic regardless of aspect ratio.
+        let dim = max(min(width, height), 1)
+        let inv = 1.0 / Float(dim)
+        var field = [Float](repeating: 0, count: width * height)
+        for y in 0..<height {
+            let v = Float(y) * inv
+            for x in 0..<width {
+                let u = Float(x) * inv
                 var value: Float = 0
                 for (i, octave) in octaves.enumerated() {
                     let (ox, oy) = offsets[i]
                     let n = snoise(u * octave.frequency + ox, v * octave.frequency + oy)
                     value += (n + 1.0) * 0.5 * octave.amplitude
                 }
-                field[y * size + x] = value / totalAmplitude
+                field[y * width + x] = value / totalAmplitude
             }
         }
         return field
@@ -481,10 +493,10 @@ public enum FiberSimulator {
     private static func bufferToCGImage(
         densityBuffer: [Float],
         orientationBuffer: [Float],
-        size: Int
+        width: Int, height: Int
     ) -> CGImage {
-        var pixels = [UInt8](repeating: 0, count: size * size * 4)
-        for i in 0..<size * size {
+        var pixels = [UInt8](repeating: 0, count: width * height * 4)
+        for i in 0..<(width * height) {
             let density = UInt8(min(max(densityBuffer[i] * 255.0, 0.0), 255.0))
             let orientation = UInt8(min(max(orientationBuffer[i] * 255.0, 0.0), 255.0))
             pixels[i * 4 + 0] = density       // R
@@ -496,10 +508,10 @@ public enum FiberSimulator {
         let colorSpace = CGColorSpaceCreateDeviceRGB()
         let context = CGContext(
             data: &pixels,
-            width: size,
-            height: size,
+            width: width,
+            height: height,
             bitsPerComponent: 8,
-            bytesPerRow: size * 4,
+            bytesPerRow: width * 4,
             space: colorSpace,
             bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
         )!
