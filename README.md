@@ -40,6 +40,14 @@ macOS 26+; no dependencies.
 .package(url: "https://github.com/angelsbrood/washiexplorer", branch: "main")
 ```
 
+**The shader lives in your app target, not in the package.** SwiftUI's
+`ShaderLibrary` resolves `[[ stitchable ]]` functions from the main bundle,
+and Swift packages can't contribute to it — so `WashiMaterial` calls
+`ShaderLibrary.washiSimulated(...)` and expects your app to supply it. Copy
+`WashiExplorer/WashiExplorer/Washi.metal` into your own target; only
+`washiSimulated` is required, the rest are for the explorer's other tiers.
+Without it the material fails to resolve the shader at runtime.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
