@@ -65,9 +65,6 @@ public enum FiberSimulator {
         let fraction: Float
         let baseAngle: Float
         let spreadMul: Float
-        let flowAngle: Float
-        let flowBias: Float
-        let flowOscillations: Int
     }
 
     // MARK: - Generation
@@ -76,6 +73,9 @@ public enum FiberSimulator {
         generate(params: params, width: size, height: size)
     }
 
+    /// Generates a sheet that tiles seamlessly: fibers wrap at the edges, every
+    /// noise field is periodic over `width × height`, and nothing depends on
+    /// position across the sheet — so a tile's edges meet like its interior.
     public static func generate(params: FiberParams, width: Int, height: Int) -> CGImage {
         var buffer = [Float](repeating: 0.0, count: width * height)
         var dirXBuffer = [Float](repeating: 0.0, count: width * height)
@@ -147,13 +147,15 @@ public enum FiberSimulator {
         }
 
         // --- Stage 2: Prominent fibers (nagashizuki) ---
+        // Each pass reads in the sheet through the angle and alignment of the
+        // fibers it lays. Placement is uniform: a pour gradient or scoop
+        // banding across the sheet would have to jump where the tile wraps.
         let choshiScoopCount = max(params.choshiScoops, 1)
-        let choshiFractionPerScoop = 0.40 / Float(choshiScoopCount)
+        let choshiFractionPerScoop = 0.20 / Float(choshiScoopCount)
 
         var passes: [FormationPass] = [
-            // Kakemizu: quick initial pour, strong gradient toward pour edge
-            FormationPass(fraction: 0.40, baseAngle: 0.15, spreadMul: 1.0,
-                          flowAngle: 0.15, flowBias: 0.3, flowOscillations: 0),
+            // Kakemizu: quick initial pour
+            FormationPass(fraction: 0.40, baseAngle: 0.15, spreadMul: 1.0),
         ]
 
         // Choshi: multiple back-and-forth scoops at jittered angles
@@ -161,18 +163,13 @@ public enum FiberSimulator {
         var scoopRng = SeededRNG(seed: params.seed &+ 0xC305_0000)
         for _ in 0..<choshiScoopCount {
             let jitter = (scoopRng.nextFloat() - 0.5) * 0.4
-            let angle = choshiBaseAngle + jitter
-            let osc = 2 + Int(scoopRng.nextFloat() * 3)
             passes.append(FormationPass(
-                fraction: choshiFractionPerScoop, baseAngle: angle,
-                spreadMul: 1.0, flowAngle: angle,
-                flowBias: 0.15, flowOscillations: osc))
+                fraction: choshiFractionPerScoop, baseAngle: choshiBaseAngle + jitter,
+                spreadMul: 1.0))
         }
 
-        // Sutemizu: quick final pour, tight alignment, mild gradient
-        passes.append(FormationPass(
-            fraction: 0.20, baseAngle: 0.15, spreadMul: 0.3,
-            flowAngle: 0.15, flowBias: 0.2, flowOscillations: 0))
+        // Sutemizu: quick final pour, tight alignment
+        passes.append(FormationPass(fraction: 0.20, baseAngle: 0.15, spreadMul: 0.3))
 
         // Compensation for meso rejection (~40%), micro-floc expansion (~1.3×),
         // and higher density needed for layered fiber texture
@@ -180,8 +177,6 @@ public enum FiberSimulator {
 
         for pass in passes {
             let count = Int(Float(scaledFiberCount) * pass.fraction * compensationFactor)
-            let flowCos = cos(pass.flowAngle)
-            let flowSin = sin(pass.flowAngle)
 
             for _ in 0..<count {
                 // Per-fiber size variation: biased toward shorter fibers
@@ -192,26 +187,8 @@ public enum FiberSimulator {
                 let thisHalfLength = fiberHalfLength * lengthScale
                 let thisWidth = fiberWidth * widthScale
 
-                // Flow-biased placement
-                let rawAlong = rng.nextFloat()
-                let along = pass.flowBias < 0.001
-                    ? rawAlong
-                    : pow(rawAlong, 1.0 + pass.flowBias * 2.0)
-                let across = rng.nextFloat()
-
-                let rawX = (flowCos * along - flowSin * across) * Float(width)
-                let rawY = (flowSin * along + flowCos * across) * Float(height)
-                let ox = ((rawX.truncatingRemainder(dividingBy: Float(width))) + Float(width))
-                    .truncatingRemainder(dividingBy: Float(width))
-                let oy = ((rawY.truncatingRemainder(dividingBy: Float(height))) + Float(height))
-                    .truncatingRemainder(dividingBy: Float(height))
-
-                // Choshi oscillation: sinusoidal density variation from back-and-forth
-                if pass.flowOscillations > 0 {
-                    let oscillation = sin(along * Float(pass.flowOscillations) * .pi)
-                    let threshold = 0.5 + oscillation * 0.15
-                    if rng.nextFloat() > threshold { continue }
-                }
+                let ox = rng.nextFloat() * Float(width)
+                let oy = rng.nextFloat() * Float(height)
 
                 // Meso-flocculation: accept/reject based on noise field
                 let mesoIdx = min(Int(oy) * width + Int(ox), mesoField.count - 1)
@@ -322,8 +299,10 @@ public enum FiberSimulator {
             let px = ox + ca * along - sa * perpOffset
             let py = oy + sa * along + ca * perpOffset
 
-            let ix = Int(px)
-            let iy = Int(py)
+            // Floor, not truncate: a point just left of or above the sheet
+            // belongs to the last column or row, not the first.
+            let ix = Int(px.rounded(.down))
+            let iy = Int(py.rounded(.down))
 
             // Width taper: thicker middle, thinner ends
             let taperScale = 1.0 - taperAmount * 4.0 * t * t
@@ -358,20 +337,22 @@ public enum FiberSimulator {
         seed: UInt64
     ) {
         guard intensity > 0.001 else { return }
+        // Frequency is per characteristic dimension, as in the meso field, so
+        // clouds stay round on non-square sheets.
         let freq = lerp(2.0, 8.0, scale)
+        let dim = Float(max(min(width, height), 1))
+        let periodU = freq * Float(width) / dim
+        let periodV = freq * Float(height) / dim
         var rng = SeededRNG(seed: seed &+ 0xBADA_CAFE)
-        let ox = rng.nextFloat() * 1000.0
-        let oy = rng.nextFloat() * 1000.0
+        let broad = PeriodicNoise(periodU: periodU, periodV: periodV, rng: &rng)
+        let fine = PeriodicNoise(periodU: periodU * 2, periodV: periodV * 2, rng: &rng)
 
-        let invWidth = 1.0 / Float(width)
-        let invHeight = 1.0 / Float(height)
         for y in 0..<height {
-            let v = Float(y) * invHeight
+            let v = Float(y) / dim * freq
             for x in 0..<width {
-                let u = Float(x) * invWidth
+                let u = Float(x) / dim * freq
 
-                var n = snoise(u * freq + ox, v * freq + oy) * 0.7
-                n += snoise(u * freq * 2.0 + ox + 50, v * freq * 2.0 + oy + 50) * 0.3
+                let n = broad(u, v) * 0.7 + fine(u * 2.0, v * 2.0) * 0.3
 
                 let modFactor = 1.0 + n * intensity
                 buffer[y * width + x] *= modFactor
@@ -379,7 +360,7 @@ public enum FiberSimulator {
         }
     }
 
-    // MARK: - Simplex noise (2D) — Gustavson, ported from Washi.metal
+    // MARK: - Periodic simplex noise (2D)
 
     private static func mod289(_ x: Float) -> Float {
         x - floor(x * (1.0 / 289.0)) * 289.0
@@ -389,63 +370,192 @@ public enum FiberSimulator {
         mod289((x * 34.0 + 1.0) * x)
     }
 
-    private static func permute(_ x: (Float, Float, Float)) -> (Float, Float, Float) {
-        (permute(x.0), permute(x.1), permute(x.2))
-    }
+    /// The 2D simplex noise of Washi.metal (Gustavson), made to tile exactly
+    /// over a `periodU × periodV` window of noise space so that every field
+    /// built from it wraps with the sheet.
+    ///
+    /// Simplex noise repeats wherever its lattice does, so the window's edges
+    /// are mapped onto two lattice vectors and each corner's lattice index is
+    /// reduced modulo them before hashing. The equilateral lattice holds no
+    /// exact axis-aligned rectangle, so the map carries a small linear
+    /// distortion: about 1% at meso frequencies, a few percent at the lowest
+    /// kumo frequencies.
+    ///
+    /// The period holds finitely many lattice corners, so their hashes are
+    /// computed once into a table covering every corner the window visits.
+    private struct PeriodicNoise {
+        private typealias Lattice = (k11: Int, k12: Int, k21: Int, k22: Int, det: Int)
 
-    private static func snoise(_ vx: Float, _ vy: Float) -> Float {
-        let Cx: Float = 0.211324865405187   // (3.0 - sqrt(3.0)) / 6.0
-        let Cy: Float = 0.366025403784439   // 0.5 * (sqrt(3.0) - 1.0)
-        let Cz: Float = -0.577350269189626  // -1.0 + 2.0 * Cx
-        let Cw: Float = 0.024390243902439   // 1.0 / 41.0
+        private let a11, a12, a21, a22: Float       // window (u, v) → simplex input space
+        private let phaseX, phaseY: Float           // per-seed sub-cell phase
+        private let lattice: Lattice                // period lattice in index space
+        private let hashOffset: (Float, Float)      // per-seed hash offset
+        private let table: [Float]                  // corner hashes over the window's index range
+        private let tableI, tableJ, tableWidth, tableHeight: Int
 
-        let s = (vx + vy) * Cy
-        let ix = floor(vx + s)
-        let iy = floor(vy + s)
+        init(periodU: Float, periodV: Float, rng: inout SeededRNG) {
+            let pu = Double(periodU), pv = Double(periodV)
+            // Rotate the window (free: the noise is isotropic), skew its edges
+            // into lattice index space, and round them to integer vectors;
+            // keep the fit whose map strays least from a pure rotation.
+            var best: (score: Double, k: (Int, Int, Int, Int))?
+            for step in 0..<1200 {
+                let theta = Double(step) / 1200 * .pi / 3   // the lattice repeats every 60°
+                let (c, s) = (cos(theta), sin(theta))
+                let edgeU = (Self.f1 * c + Self.f * s, Self.f * c + Self.f1 * s)    // S · R · (1, 0)
+                let edgeV = (Self.f * c - Self.f1 * s, Self.f1 * c - Self.f * s)    // S · R · (0, 1)
+                for rounding in 0..<16 {
+                    let k = (Self.round(edgeU.0 * pu, up: rounding & 1 != 0),
+                             Self.round(edgeU.1 * pu, up: rounding & 2 != 0),
+                             Self.round(edgeV.0 * pv, up: rounding & 4 != 0),
+                             Self.round(edgeV.1 * pv, up: rounding & 8 != 0))
+                    guard k.0 * k.3 - k.2 * k.1 != 0 else { continue }
+                    let score = Self.distortion(Self.map(k, pu, pv))
+                    if score < best?.score ?? .infinity { best = (score, k) }
+                }
+            }
+            var (k11, k12, k21, k22) = best!.k
+            let a = Self.map((k11, k12, k21, k22), pu, pv)
+            (a11, a12, a21, a22) = (Float(a.0), Float(a.1), Float(a.2), Float(a.3))
+            // (K1, −K2) spans the same lattice; take the orientation with det > 0.
+            if k11 * k22 - k21 * k12 < 0 { (k21, k22) = (-k21, -k22) }
+            let lattice = (k11: k11, k12: k12, k21: k21, k22: k22, det: k11 * k22 - k21 * k12)
+            self.lattice = lattice
 
-        let t = (ix + iy) * Cx
-        let x0x = vx - ix + t
-        let x0y = vy - iy + t
+            let hashOffset = ((rng.nextFloat() * 289).rounded(.down), (rng.nextFloat() * 289).rounded(.down))
+            self.hashOffset = hashOffset
+            phaseX = rng.nextFloat()
+            phaseY = rng.nextFloat()
 
-        let i1x: Float = x0x > x0y ? 1.0 : 0.0
-        let i1y: Float = x0x > x0y ? 0.0 : 1.0
+            // The map is linear, so the window's four corners bound every lattice
+            // index it reaches; pad for the simplex's far corner and rounding.
+            var lo = (Int.max, Int.max), hi = (Int.min, Int.min)
+            for (u, v) in [(0, 0), (periodU, 0), (0, periodV), (periodU, periodV)] {
+                let vx = a11 * u + a12 * v + phaseX
+                let vy = a21 * u + a22 * v + phaseY
+                let s = (vx + vy) * Float(Self.f)
+                let i = Int(floor(vx + s)), j = Int(floor(vy + s))
+                lo = (min(lo.0, i), min(lo.1, j))
+                hi = (max(hi.0, i), max(hi.1, j))
+            }
+            (tableI, tableJ) = (lo.0 - 2, lo.1 - 2)
+            (tableWidth, tableHeight) = (hi.0 - lo.0 + 5, hi.1 - lo.1 + 5)
+            var table = [Float](repeating: 0, count: tableWidth * tableHeight)
+            for j in 0..<tableHeight {
+                for i in 0..<tableWidth {
+                    table[j * tableWidth + i] = Self.reducedHash(tableI + i, tableJ + j, lattice, hashOffset)
+                }
+            }
+            self.table = table
+        }
 
-        let x1x = x0x - i1x + Cx
-        let x1y = x0y - i1y + Cx
-        let x2x = x0x + Cz
-        let x2y = x0y + Cz
+        // Skew S = [[f1, f], [f, f1]] maps simplex input space to lattice index space.
+        private static let f = (3.0.squareRoot() - 1) / 2   // 0.5 * (sqrt(3) - 1)
+        private static let f1 = 1 + f
 
-        let jx = mod289(ix)
-        let jy = mod289(iy)
-        let pInner = permute((jy, jy + i1y, jy + 1.0))
-        let p = permute((pInner.0 + jx, pInner.1 + jx + i1x, pInner.2 + jx + 1.0))
+        private static func round(_ x: Double, up: Bool) -> Int {
+            Int(up ? x.rounded(.up) : x.rounded(.down))
+        }
 
-        var m0 = max(0.5 - (x0x * x0x + x0y * x0y), 0.0)
-        var m1 = max(0.5 - (x1x * x1x + x1y * x1y), 0.0)
-        var m2 = max(0.5 - (x2x * x2x + x2y * x2y), 0.0)
-        m0 *= m0; m0 *= m0
-        m1 *= m1; m1 *= m1
-        m2 *= m2; m2 *= m2
+        /// A = S⁻¹ · [K1 / periodU | K2 / periodV]: the map whose window edges land on K1, K2.
+        private static func map(_ k: (Int, Int, Int, Int), _ pu: Double, _ pv: Double)
+            -> (Double, Double, Double, Double) {
+            let d = f1 * f1 - f * f
+            let (s11, s12, s21, s22) = (f1 / d, -f / d, -f / d, f1 / d)
+            let (b11, b21) = (Double(k.0) / pu, Double(k.1) / pu)
+            let (b12, b22) = (Double(k.2) / pv, Double(k.3) / pv)
+            return (s11 * b11 + s12 * b21, s11 * b12 + s12 * b22,
+                    s21 * b11 + s22 * b21, s21 * b12 + s22 * b22)
+        }
 
-        let gx0 = 2.0 * (p.0 * Cw - floor(p.0 * Cw)) - 1.0
-        let gx1 = 2.0 * (p.1 * Cw - floor(p.1 * Cw)) - 1.0
-        let gx2 = 2.0 * (p.2 * Cw - floor(p.2 * Cw)) - 1.0
-        let h0 = abs(gx0) - 0.5
-        let h1 = abs(gx1) - 0.5
-        let h2 = abs(gx2) - 0.5
-        let a0 = gx0 - floor(gx0 + 0.5)
-        let a1 = gx1 - floor(gx1 + 0.5)
-        let a2 = gx2 - floor(gx2 + 0.5)
+        /// Worst-axis scale error of a 2×2 map: max |ln σ| over its singular values.
+        private static func distortion(_ a: (Double, Double, Double, Double)) -> Double {
+            let sumSq = a.0 * a.0 + a.1 * a.1 + a.2 * a.2 + a.3 * a.3
+            let det = abs(a.0 * a.3 - a.1 * a.2)
+            let root = max(sumSq * sumSq - 4 * det * det, 0).squareRoot()
+            let s1 = ((sumSq + root) / 2).squareRoot(), s2 = ((sumSq - root) / 2).squareRoot()
+            return max(abs(log(s1)), abs(log(s2)))
+        }
 
-        m0 *= 1.79284291400159 - 0.85373472095314 * (a0 * a0 + h0 * h0)
-        m1 *= 1.79284291400159 - 0.85373472095314 * (a1 * a1 + h1 * h1)
-        m2 *= 1.79284291400159 - 0.85373472095314 * (a2 * a2 + h2 * h2)
+        private static func floorDiv(_ a: Int, _ b: Int) -> Int {
+            let q = a / b
+            return (a % b != 0) && ((a < 0) != (b < 0)) ? q - 1 : q
+        }
 
-        let g0 = a0 * x0x + h0 * x0y
-        let g1 = a1 * x1x + h1 * x1y
-        let g2 = a2 * x2x + h2 * x2y
+        /// Gradient hash of a lattice corner, reduced into the period so it
+        /// repeats with the window.
+        private static func reducedHash(_ i: Int, _ j: Int, _ l: Lattice, _ offset: (Float, Float)) -> Float {
+            let c1 = floorDiv(l.k22 * i - l.k21 * j, l.det)
+            let c2 = floorDiv(l.k11 * j - l.k12 * i, l.det)
+            let x = mod289(Float(i - (l.k11 * c1 + l.k21 * c2)) + offset.0)
+            let y = mod289(Float(j - (l.k12 * c1 + l.k22 * c2)) + offset.1)
+            return permute(permute(y) + x)
+        }
 
-        return 130.0 * (m0 * g0 + m1 * g1 + m2 * g2)
+        private func hash(_ i: Int, _ j: Int) -> Float {
+            let ti = i - tableI, tj = j - tableJ
+            guard ti >= 0, tj >= 0, ti < tableWidth, tj < tableHeight else {
+                return Self.reducedHash(i, j, lattice, hashOffset)
+            }
+            return table[tj * tableWidth + ti]
+        }
+
+        /// Noise at (u, v); repeats exactly every `periodU` in u and `periodV` in v.
+        func callAsFunction(_ u: Float, _ v: Float) -> Float {
+            let vx = a11 * u + a12 * v + phaseX
+            let vy = a21 * u + a22 * v + phaseY
+
+            let Cx: Float = 0.211324865405187   // (3.0 - sqrt(3.0)) / 6.0
+            let Cy: Float = 0.366025403784439   // 0.5 * (sqrt(3.0) - 1.0)
+            let Cz: Float = -0.577350269189626  // -1.0 + 2.0 * Cx
+            let Cw: Float = 0.024390243902439   // 1.0 / 41.0
+
+            let s = (vx + vy) * Cy
+            let ix = floor(vx + s)
+            let iy = floor(vy + s)
+
+            let t = (ix + iy) * Cx
+            let x0x = vx - ix + t
+            let x0y = vy - iy + t
+
+            let i1x: Float = x0x > x0y ? 1.0 : 0.0
+            let i1y: Float = x0x > x0y ? 0.0 : 1.0
+
+            let x1x = x0x - i1x + Cx
+            let x1y = x0y - i1y + Cx
+            let x2x = x0x + Cz
+            let x2y = x0y + Cz
+
+            let jx = Int(ix), jy = Int(iy)
+            let p = (hash(jx, jy), hash(jx + Int(i1x), jy + Int(i1y)), hash(jx + 1, jy + 1))
+
+            var m0 = max(0.5 - (x0x * x0x + x0y * x0y), 0.0)
+            var m1 = max(0.5 - (x1x * x1x + x1y * x1y), 0.0)
+            var m2 = max(0.5 - (x2x * x2x + x2y * x2y), 0.0)
+            m0 *= m0; m0 *= m0
+            m1 *= m1; m1 *= m1
+            m2 *= m2; m2 *= m2
+
+            let gx0 = 2.0 * (p.0 * Cw - floor(p.0 * Cw)) - 1.0
+            let gx1 = 2.0 * (p.1 * Cw - floor(p.1 * Cw)) - 1.0
+            let gx2 = 2.0 * (p.2 * Cw - floor(p.2 * Cw)) - 1.0
+            let h0 = abs(gx0) - 0.5
+            let h1 = abs(gx1) - 0.5
+            let h2 = abs(gx2) - 0.5
+            let a0 = gx0 - floor(gx0 + 0.5)
+            let a1 = gx1 - floor(gx1 + 0.5)
+            let a2 = gx2 - floor(gx2 + 0.5)
+
+            m0 *= 1.79284291400159 - 0.85373472095314 * (a0 * a0 + h0 * h0)
+            m1 *= 1.79284291400159 - 0.85373472095314 * (a1 * a1 + h1 * h1)
+            m2 *= 1.79284291400159 - 0.85373472095314 * (a2 * a2 + h2 * h2)
+
+            let g0 = a0 * x0x + h0 * x0y
+            let g1 = a1 * x1x + h1 * x1y
+            let g2 = a2 * x2x + h2 * x2y
+
+            return 130.0 * (m0 * g0 + m1 * g1 + m2 * g2)
+        }
     }
 
     // MARK: - Meso-flocculation field
@@ -461,25 +571,26 @@ public enum FiberSimulator {
         ]
         let totalAmplitude = octaves.reduce(Float(0)) { $0 + $1.amplitude }
 
-        var offsets: [(Float, Float)] = []
-        for octave in octaves {
-            var rng = SeededRNG(seed: seed &+ octave.seedOffset)
-            offsets.append((rng.nextFloat() * 1000.0, rng.nextFloat() * 1000.0))
-        }
-
         // Sample u and v over the same characteristic dimension so noise
         // features are isotropic regardless of aspect ratio.
-        let dim = max(min(width, height), 1)
-        let inv = 1.0 / Float(dim)
+        let dim = Float(max(min(width, height), 1))
+        let noise = octaves.map { octave in
+            var rng = SeededRNG(seed: seed &+ octave.seedOffset)
+            return PeriodicNoise(
+                periodU: octave.frequency * Float(width) / dim,
+                periodV: octave.frequency * Float(height) / dim,
+                rng: &rng
+            )
+        }
+
         var field = [Float](repeating: 0, count: width * height)
         for y in 0..<height {
-            let v = Float(y) * inv
+            let v = Float(y) / dim
             for x in 0..<width {
-                let u = Float(x) * inv
+                let u = Float(x) / dim
                 var value: Float = 0
                 for (i, octave) in octaves.enumerated() {
-                    let (ox, oy) = offsets[i]
-                    let n = snoise(u * octave.frequency + ox, v * octave.frequency + oy)
+                    let n = noise[i](u * octave.frequency, v * octave.frequency)
                     value += (n + 1.0) * 0.5 * octave.amplitude
                 }
                 field[y * width + x] = value / totalAmplitude

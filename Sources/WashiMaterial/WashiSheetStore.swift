@@ -70,7 +70,7 @@ internal final class WashiSheetStore: @unchecked Sendable {
 
     private func diskCacheURL(for key: String) -> URL {
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-        let dir = caches.appendingPathComponent("WashiTextures-v23", isDirectory: true)
+        let dir = caches.appendingPathComponent("WashiTextures-v24", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let safe = key.replacingOccurrences(of: "/", with: "_")
                       .replacingOccurrences(of: ":", with: "_")
